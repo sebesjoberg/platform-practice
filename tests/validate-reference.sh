@@ -149,8 +149,12 @@ if [[ ${#tf_dirs[@]} -gt 0 ]]; then
     step "init $r" "$d" terraform init -backend=false -input=false
     step "validate $r" "$d" terraform validate
     step "tflint $r" "$d" tflint --config "$REPO/tests/tflint.hcl"
-    step "trivy $r" "$d" trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 \
-      --ignorefile "$REPO/tests/trivy-ignore.yaml" .
+    # Modules are scanned once from the modules root below, as the modules repo's CI does, so
+    # their findings carry paths such as app-env/main.tf that an allow-list entry can name.
+    if [[ "$d" != "$OUT/modules"/* ]]; then
+      step "trivy $r" "$d" trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 \
+        --ignorefile "$REPO/tests/trivy-ignore.yaml" .
+    fi
     if [[ -d "$d/tests" ]] && compgen -G "$d/tests/*.tftest.hcl" >/dev/null; then
       for tf in "$d"/tests/*.tftest.hcl; do
         if ! grep -Eq '^[[:space:]]*mock_provider[[:space:]]+"' "$tf"; then
@@ -163,6 +167,10 @@ if [[ ${#tf_dirs[@]} -gt 0 ]]; then
       step "test $r" "$d" env ARM_USE_CLI=false ARM_USE_MSI=false ARM_USE_OIDC=false         ARM_SUBSCRIPTION_ID=00000000-0000-0000-0000-000000000000         ARM_TENANT_ID=11111111-1111-1111-1111-111111111111         ARM_CLIENT_ID=00000000-0000-0000-0000-000000000000 ARM_CLIENT_SECRET=invalid         terraform test
     fi
   done
+  if [[ -d "$OUT/modules" ]] && [[ -n "$(find "$OUT/modules" -name .terraform -prune -o -name '*.tf' -type f -print -quit)" ]]; then
+    step "trivy modules" "$OUT/modules" trivy config --quiet --severity HIGH,CRITICAL --exit-code 1 \
+      --ignorefile "$REPO/tests/trivy-ignore.yaml" .
+  fi
 else
   echo "skip  terraform (no .tf files)"
 fi

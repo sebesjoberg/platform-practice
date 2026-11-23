@@ -5,7 +5,9 @@
 #       paths:
 #         - "keyvault.tf"
 #       statement: "why this is acceptable for a practice lab"
-# Paths are relative to the stack directory trivy scans (validate-reference runs it per stack).
+# Paths are relative to the directory trivy scans: each stack directory (a module a stack calls
+# is reported through the stack as ../../../modules/<module>/<file>), and the modules root, which
+# is scanned once (modules/<module>/<file> becomes <module>/<file>). Name exact files only.
 misconfigurations:
   - id: AZU-0012
     paths:
@@ -15,3 +17,13 @@ misconfigurations:
       GitHub-hosted runners and the learner's WSL have no fixed IPs and there is no private
       runner before tf-25. Access is Entra ID only (shared keys disabled, no anonymous blob
       access, TLS 1.2), so network rules would add cost/complexity, not protection, in the lab.
+  - id: AZU-0013
+    paths:
+      - "app-env/main.tf"
+      - "../../../modules/app-env/main.tf"
+    statement: >-
+      Key Vault public network access stays enabled with network ACL default action Allow (spec
+      decision "Key Vault network access", tf-21): GitHub-hosted runners and the learner's WSL
+      write secrets over the public endpoint before any runner inside the VNet exists. The data
+      plane is RBAC only; the private endpoint pe-kv-<prefix>-<env> serves the VNets. The same
+      exception is in the learner's modules repo (.trivyignore.yaml).
