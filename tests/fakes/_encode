@@ -1,0 +1,6 @@
+# shellcheck shell=bash
+# Shared by _fake and tests/test_helper.bash so response-file keys cannot drift.
+# fake_key <joined-args>: makes the args safe as a single file name ("/" -> "%2F").
+fake_key() {
+  printf '%s' "${1//\//%2F}"
+}

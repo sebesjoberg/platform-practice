@@ -16,7 +16,9 @@ if [[ -n "${FAKE_LOG:-}" ]]; then
   printf '%s\n' "$tool${args:+ $args}" >>"$FAKE_LOG"
 fi
 
-base="${FAKE_DIR:-}/$tool/$args"
+# shellcheck source=tests/fakes/_encode
+source "$(dirname "${BASH_SOURCE[0]}")/_encode"
+base="${FAKE_DIR:-}/$tool/$(fake_key "$args")"
 
 if [[ -z "${FAKE_DIR:-}" || ( ! -e "$base.out" && ! -e "$base.rc" ) ]]; then
   echo "fake: no response for $tool${args:+ $args}" >&2

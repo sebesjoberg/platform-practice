@@ -3,6 +3,8 @@
 #   setup() { setup_lab; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/fakes/_encode
+source "$REPO_ROOT/tests/fakes/_encode"
 export REPO_ROOT
 
 # setup_lab: isolated lab sandbox with fake az/gh/terraform first on PATH.
@@ -39,12 +41,13 @@ teardown_lab() {
 # fake_response <tool> "<args>" <rc> [stdout]
 # Registers a canned answer for `<tool> <args>`. Args are the argv joined by single spaces.
 fake_response() {
-  local tool=$1 args=$2 rc=$3
+  local tool=$1 args=$2 rc=$3 key
+  key="$(fake_key "$args")"
   mkdir -p "$FAKE_DIR/$tool"
-  printf '%s\n' "$rc" >"$FAKE_DIR/$tool/$args.rc"
+  printf '%s\n' "$rc" >"$FAKE_DIR/$tool/$key.rc"
   if [[ $# -ge 4 ]]; then
-    printf '%s\n' "$4" >"$FAKE_DIR/$tool/$args.out"
+    printf '%s\n' "$4" >"$FAKE_DIR/$tool/$key.out"
   else
-    : >"$FAKE_DIR/$tool/$args.out"
+    : >"$FAKE_DIR/$tool/$key.out"
   fi
 }

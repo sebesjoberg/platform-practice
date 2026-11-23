@@ -34,3 +34,11 @@ setup() {
 teardown() {
   teardown_lab
 }
+
+@test "fake handles args containing slashes" {
+  fake_response gh "api repos/learner/acme-platform" 0 '{"x":1}'
+  run gh api repos/learner/acme-platform
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"x":1}' ]
+  grep -qx 'gh api repos/learner/acme-platform' "$FAKE_LOG"
+}
