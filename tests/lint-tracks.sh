@@ -3,6 +3,7 @@
 # Honours TRACKS_DIR (default <repo>/tracks). Prints `<task-dir>: <problem>` per violation, exit 1 if any.
 #
 # Escape hatches (on the offending line): `lint-allow: banned`, `lint-allow: naming`.
+# A track's lib/ directory holds shared helper scripts, not a task: only shellcheck + CRLF.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -185,10 +186,29 @@ if [[ ${#tracks[@]} -eq 0 ]]; then
   exit 0
 fi
 
+# lint_lib <dir>: tracks/<track>/lib/ holds shell helpers shared by several tasks (sourced by
+# their checks.sh/setup.sh/catchup.sh); not a task. Shellcheck and CRLF only.
+lint_lib() {
+  local d=$1 f out
+  while IFS= read -r f; do
+    if ! out="$(shellcheck -s bash -e SC2016 "$f" 2>&1)"; then
+      violation "$d" "shellcheck: ${f#"$d"/}"
+      printf '%s\n' "$out" | sed 's/^/    /'
+    fi
+  done < <(find "$d" -type f -name '*.sh' | sort)
+  while IFS= read -r f; do
+    violation "$d" "CRLF line endings in ${f#"$d"/}"
+  done < <(grep -rIl $'\r' "$d" 2>/dev/null | sort || true)
+}
+
 for t in "${tracks[@]}"; do
   for d in "$TRACKS_DIR/$t"/*/; do
     [[ -d "$d" ]] || continue
-    lint_task "${d%/}"
+    if [[ "$(basename "$d")" == lib ]]; then
+      lint_lib "${d%/}"
+    else
+      lint_task "${d%/}"
+    fi
   done
 done
 
