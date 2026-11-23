@@ -131,7 +131,7 @@ cmd_nuke() {
   confirm_typed nuke "Type 'nuke' to destroy everything:"
 
   local stack pid rg="rg-$PREFIX-tfstate" active
-  active="$(az account show --query id -o tsv </dev/null 2>/dev/null | tr -d '')" || active=""
+  active="$(az account show --query id -o tsv </dev/null 2>/dev/null | tr -d '\r')" || active=""
   [[ "$active" == "${SUBSCRIPTION_ID:-}" ]] ||
     die 4 "az is on subscription ${active:-<none>}, lab is $SUBSCRIPTION_ID — az account set -s $SUBSCRIPTION_ID"
 
@@ -145,9 +145,19 @@ cmd_nuke() {
     tf_stack "$stack" destroy -auto-approve -input=false
   done
   # tf-26's click-ops group, if it was never imported into landing-zone (destroyed above if it was).
-  if [[ -s "$LAB_HOME/snapshots/tf-26.ids" && "$(az group exists -n "rg-$PREFIX-legacy" -o tsv </dev/null 2>/dev/null | tr -d '')" == true ]]; then
+  if [[ -s "$LAB_HOME/snapshots/tf-26.ids" && "$(az group exists -n "rg-$PREFIX-legacy" -o tsv </dev/null 2>/dev/null | tr -d '\r')" == true ]]; then
     az group delete -n "rg-$PREFIX-legacy" --yes </dev/null || die 1 "could not delete rg-$PREFIX-legacy"
   fi
+  # tf-31: bootstrap vends each team's resource group (the stack in terraform/teams/<team> only
+  # works inside it), and nuke never destroys bootstrap. Delete the groups of the onboarded teams.
+  local team
+  for team in "$LIVE_DIR"/terraform/teams/*/; do
+    [[ -d "$team" ]] || continue
+    team="$(basename "$team")"
+    if [[ "$(az group exists -n "rg-$PREFIX-$team" -o tsv </dev/null 2>/dev/null | tr -d '\r')" == true ]]; then
+      az group delete -n "rg-$PREFIX-$team" --yes </dev/null || die 1 "could not delete rg-$PREFIX-$team"
+    fi
+  done
 
   if pid="$(az identity show -g "$rg" -n "id-$PREFIX-github-ci" --query principalId -o tsv </dev/null 2>/dev/null | tr -d '\r')" && [[ -n "$pid" ]]; then
     az role assignment delete --assignee "$pid" --yes </dev/null || die 1 "could not delete role assignments of $pid"
@@ -192,8 +202,8 @@ cmd_cost() {
     return 0
   fi
   local sum cur
-  sum="$(jq -r '[.[] | (.pretaxCost // 0 | tonumber)] | add // 0' <<<"$out" | tr -d '')"
-  cur="$(jq -r '.[0].currency // "?"' <<<"$out" | tr -d '')"
+  sum="$(jq -r '[.[] | (.pretaxCost // 0 | tonumber)] | add // 0' <<<"$out" | tr -d '\r')"
+  cur="$(jq -r '.[0].currency // "?"' <<<"$out" | tr -d '\r')"
   printf 'month to date: %.2f %s of budget 300
 ' "$sum" "$cur"
 }

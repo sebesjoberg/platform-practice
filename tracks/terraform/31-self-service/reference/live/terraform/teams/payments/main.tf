@@ -1,16 +1,19 @@
-# The payments team (tf-31): onboarded with one module call. Everything the team gets is in the
-# team-env module of the modules repo; a new team is a copy of this directory with another name,
-# a backend key teams-<team>.tfstate and a line in STACK_ORDER and dependabot.yml.
+# The payments team (tf-31): onboarded with one module call, inside the resource group the
+# platform vended for it (bootstrap's team-vending.tf: the group, and CI's right to grant
+# Contributor there only). Everything the team gets is in the team-env module of the modules repo.
+# A new team: an entry in team-vending.tf (applied locally), then a copy of this directory with
+# another name, a backend key teams-<team>.tfstate and a line in STACK_ORDER and dependabot.yml.
 
 module "team_payments" {
   source = "git::https://github.com/{{GH_OWNER}}/{{MODULES_REPO}}.git//team-env?ref=v3.1.0"
 
-  team              = "payments"
-  prefix            = var.prefix
-  location          = var.location
-  owner             = var.owner
-  github_repository = "${var.github_owner}/${var.prefix}-payments-app"
-  github_token      = var.github_token
+  team   = "payments"
+  prefix = var.prefix
+  # the vended group: bootstrap created it, CI only works inside it
+  resource_group_name = "rg-${var.prefix}-payments"
+  owner               = var.owner
+  github_repository   = "${var.github_owner}/${var.prefix}-payments-app"
+  github_token        = var.github_token
 
   budget_amount         = 100
   budget_contact_emails = [var.budget_email]

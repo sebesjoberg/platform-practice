@@ -7,7 +7,8 @@
 #     builds the immutable one.
 #   - tag v3.1.0 at tf-31's reference modules tree (after-push; normally done already by tf-05's
 #     hook, which creates every pinned tag before the pipeline runs).
-# tf-04's hook has applied bootstrap with team-onboarding.tf. Idempotent.
+# tf-04's hook has applied bootstrap first, which vends rg-<prefix>-payments and CI's scoped RBAC
+# Administrator assignment (team-vending.tf): the stack works inside that group. Idempotent.
 set -euo pipefail
 
 repo="${GH_OWNER:?}/${PREFIX:?}-payments-app"

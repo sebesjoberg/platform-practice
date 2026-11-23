@@ -1,6 +1,6 @@
 output "resource_group_name" {
-  description = "The team's resource group (rg-<prefix>-<team>)."
-  value       = azurerm_resource_group.this.name
+  description = "The team's resource group (rg-<prefix>-<team>), as vended by the platform."
+  value       = data.azurerm_resource_group.this.name
 }
 
 output "identity_client_id" {

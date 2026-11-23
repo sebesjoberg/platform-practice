@@ -8,11 +8,12 @@ entry says what.
 
 ### Added
 
-- `team-env`: new module. Onboards one product team: resource group `rg-<prefix>-<team>`, CI
-  identity `id-<prefix>-<team>-ci` with a federated credential `gh-main` for the team repo's main
-  branch (immutable subject, looked up in GitHub's API), `Contributor` on the team's group only,
-  and a monthly budget `budget-<prefix>-<team>` with alerts at 80 % actual and 100 % forecast.
-  Needs the `hashicorp/http` provider.
+- `team-env`: new module. Onboards one product team inside the resource group the platform vended
+  for it (input `resource_group_name`; the module doesn't create the group): CI identity
+  `id-<prefix>-<team>-ci` with a federated credential `gh-main` for the team repo's main branch
+  (immutable subject, looked up in GitHub's API), `Contributor` on the team's group only, and a
+  monthly budget `budget-<prefix>-<team>` with alerts at 80 % actual and 100 % forecast. Needs the
+  `hashicorp/http` provider.
 
 `spoke`, `app-env` and `linux-vm` are unchanged: callers on `v3.0.0` need not move.
 

@@ -1,7 +1,15 @@
 # Plan-only tests for team-env. mock_provider fakes azurerm; the http data source gets a canned
 # GitHub API answer, so nothing reaches GitHub or Azure.
 
-mock_provider "azurerm" {}
+mock_provider "azurerm" {
+  # The vended group: a realistic ID, since the budget validates resource_group_id.
+  mock_data "azurerm_resource_group" {
+    defaults = {
+      id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-acme-payments"
+      location = "swedencentral"
+    }
+  }
+}
 
 mock_provider "http" {
   mock_data "http" {
@@ -15,7 +23,7 @@ mock_provider "http" {
 variables {
   team                  = "payments"
   prefix                = "acme"
-  location              = "swedencentral"
+  resource_group_name   = "rg-acme-payments"
   owner                 = "platform-team"
   github_repository     = "learner/acme-payments-app"
   budget_amount         = 100
@@ -26,13 +34,18 @@ run "names_tags_and_budget" {
   command = plan
 
   assert {
-    condition     = azurerm_resource_group.this.name == "rg-acme-payments" && azurerm_user_assigned_identity.ci.name == "id-acme-payments-ci" && azurerm_consumption_budget_resource_group.this.name == "budget-acme-payments"
-    error_message = "names must be rg-<prefix>-<team>, id-<prefix>-<team>-ci and budget-<prefix>-<team>"
+    condition     = azurerm_user_assigned_identity.ci.name == "id-acme-payments-ci" && azurerm_user_assigned_identity.ci.resource_group_name == "rg-acme-payments" && azurerm_consumption_budget_resource_group.this.name == "budget-acme-payments"
+    error_message = "the identity is id-<prefix>-<team>-ci in the vended group, the budget budget-<prefix>-<team>"
   }
 
   assert {
-    condition     = azurerm_resource_group.this.tags["owner"] == "platform-team" && azurerm_resource_group.this.tags["env"] == "dev" && azurerm_resource_group.this.tags["managed_by"] == "terraform" && azurerm_resource_group.this.tags["team"] == "payments"
-    error_message = "the resource group needs owner, env, managed_by and team tags"
+    condition     = azurerm_user_assigned_identity.ci.tags["owner"] == "platform-team" && azurerm_user_assigned_identity.ci.tags["env"] == "dev" && azurerm_user_assigned_identity.ci.tags["managed_by"] == "terraform" && azurerm_user_assigned_identity.ci.tags["team"] == "payments"
+    error_message = "the identity needs owner, env, managed_by and team tags"
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.contributor.scope == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-acme-payments" && azurerm_consumption_budget_resource_group.this.resource_group_id == azurerm_role_assignment.contributor.scope
+    error_message = "Contributor and the budget apply to the vended group"
   }
 
   assert {
@@ -82,4 +95,14 @@ run "fails_when_the_repo_does_not_exist" {
   }
 
   expect_failures = [data.http.repo]
+}
+
+run "rejects_a_resource_group_outside_the_convention" {
+  command = plan
+
+  variables {
+    resource_group_name = "payments"
+  }
+
+  expect_failures = [var.resource_group_name]
 }

@@ -11,19 +11,8 @@ variable "prefix" {
   }
 }
 
-variable "location" {
-  description = "Azure region for every resource."
-  type        = string
-  default     = "{{LOCATION}}"
-
-  validation {
-    condition     = var.location == "swedencentral"
-    error_message = "The platform runs in swedencentral only."
-  }
-}
-
 variable "owner" {
-  description = "Value of the owner tag on the team's resource group."
+  description = "Value of the owner tag on the team's identity."
   type        = string
   default     = "{{OWNER_TAG}}"
 

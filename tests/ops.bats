@@ -127,6 +127,9 @@ ansible-playbook -i inventory site.yml"
   fake_response az "role assignment delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleAssignments/ra-1 --yes" 0
   fake_response az "group delete -n rg-acme-tfstate --yes" 0
   fake_response gh "repo delete learner/acme-platform --yes" 0
+  # tf-31: the payments team's group is vended by bootstrap, which nuke never destroys
+  fake_response az "group exists -n rg-acme-payments -o tsv" 0 true
+  fake_response az "group delete -n rg-acme-payments --yes" 0
   run "$LAB" nuke <<<$'acme\nnuke\ny\nn'
   [ "$status" -eq 0 ]
   expected="az account show --query id -o tsv
@@ -136,6 +139,8 @@ terraform -chdir=$LIVE/terraform/shared init -input=false
 terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/landing-zone init -input=false
 terraform -chdir=$LIVE/terraform/landing-zone destroy -auto-approve -input=false
+az group exists -n rg-acme-payments -o tsv
+az group delete -n rg-acme-payments --yes
 az identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv
 az role assignment delete --assignee pid-123 --yes
 az ad signed-in-user show --query id -o tsv

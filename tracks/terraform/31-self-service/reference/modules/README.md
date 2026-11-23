@@ -7,7 +7,7 @@ Terraform modules of the Acme platform, consumed by `{{LIVE_REPO}}` and, later, 
 | [`spoke`](spoke/) | One environment's spoke network, peered with the hub |
 | [`app-env`](app-env/) | One environment's app identity and Key Vault with a private endpoint (since v2.1.0) |
 | [`linux-vm`](linux-vm/) | One Ubuntu 24.04 VM, SSH key only, optional public IP and identity (since v2.2.0) |
-| [`team-env`](team-env/) | One product team's resource group, budget and CI identity for its repo (since v3.1.0) |
+| [`team-env`](team-env/) | One product team's CI identity for its repo and budget, in its vended resource group (since v3.1.0) |
 
 ## Using a module
 

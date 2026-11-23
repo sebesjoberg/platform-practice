@@ -1,5 +1,5 @@
 variable "team" {
-  description = "Team name, part of every resource name (rg-<prefix>-<team>, id-<prefix>-<team>-ci, budget-<prefix>-<team>) and the team tag."
+  description = "Team name, part of the resource names (id-<prefix>-<team>-ci, budget-<prefix>-<team>) and the team tag."
   type        = string
 
   validation {
@@ -19,7 +19,7 @@ variable "prefix" {
 }
 
 variable "env" {
-  description = "Value of the env tag: the environment the team deploys into (dev or prod)."
+  description = "Value of the env tag on the identity: the environment the team deploys into (dev or prod)."
   type        = string
   default     = "dev"
 
@@ -29,13 +29,18 @@ variable "env" {
   }
 }
 
-variable "location" {
-  description = "Azure region of the resource group and the identity."
+variable "resource_group_name" {
+  description = "The team's resource group (rg-<prefix>-<team>), vended by the platform before this module runs. Everything the module creates lives in it or applies to it."
   type        = string
+
+  validation {
+    condition     = can(regex("^rg-[a-z0-9-]+$", var.resource_group_name))
+    error_message = "resource_group_name must be an rg-* resource group name."
+  }
 }
 
 variable "owner" {
-  description = "Value of the owner tag: who answers for the team's resources."
+  description = "Value of the owner tag on the identity: who answers for the team's resources."
   type        = string
 
   validation {
