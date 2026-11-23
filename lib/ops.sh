@@ -1,7 +1,10 @@
 # shellcheck shell=bash
 # Cost control: pause, resume, nuke, cost.
 
-PAUSE_ORDER=(teams/payments observability env-prod env-dev shared)
+# observability (tf-29) holds the Log Analytics workspace that used to live in landing-zone. It
+# costs next to nothing (0.1 GB daily cap) and keeps the platform's logs and workspace ID, so pause
+# leaves it running, like landing-zone. nuke destroys it.
+PAUSE_ORDER=(teams/payments env-prod env-dev shared)
 NUKE_ORDER=(teams/payments observability env-prod env-dev shared landing-zone)
 
 # tf_stack <stack> <verb...>: run init then the verb against one stack dir; dies naming the stack on failure.
@@ -51,10 +54,21 @@ resume_import_image() {
   acr_hello_import </dev/null || die 1 "could not import the app image into $(acr_name)"
 }
 
+# drift_workflow <enable|disable>: from tf-27 the live repo has a scheduled drift.yml. While the
+# lab is paused every destroyed stack plans as "create everything", so pause disables it and
+# resume enables it again. Best effort: a failure only prints a warning.
+drift_workflow() {
+  [[ -f "$LIVE_DIR/.github/workflows/drift.yml" ]] || return 0
+  need gh
+  gh workflow "$1" drift.yml -R "$GH_OWNER/$LIVE_REPO" </dev/null >/dev/null ||
+    echo "warning: could not $1 drift.yml in $GH_OWNER/$LIVE_REPO (gh workflow $1 drift.yml)" >&2
+}
+
 cmd_pause() {
   load_config
   need terraform
   lab_destroy_vars
+  drift_workflow disable
   local stack
   for stack in "${PAUSE_ORDER[@]}"; do
     [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
@@ -97,6 +111,7 @@ cmd_resume() {
     need ansible-playbook
     (cd "$LIVE_DIR/ansible" && ansible-playbook -i inventory site.yml </dev/null) || die 1 "ansible-playbook failed"
   fi
+  drift_workflow enable
   rm -f "$LAB_HOME/paused"
   echo "resumed"
 }
@@ -129,6 +144,10 @@ cmd_nuke() {
     echo "nuke: destroying $stack"
     tf_stack "$stack" destroy -auto-approve -input=false
   done
+  # tf-26's click-ops group, if it was never imported into landing-zone (destroyed above if it was).
+  if [[ -s "$LAB_HOME/snapshots/tf-26.ids" && "$(az group exists -n "rg-$PREFIX-legacy" -o tsv </dev/null 2>/dev/null | tr -d '')" == true ]]; then
+    az group delete -n "rg-$PREFIX-legacy" --yes </dev/null || die 1 "could not delete rg-$PREFIX-legacy"
+  fi
 
   if pid="$(az identity show -g "$rg" -n "id-$PREFIX-github-ci" --query principalId -o tsv </dev/null 2>/dev/null | tr -d '\r')" && [[ -n "$pid" ]]; then
     az role assignment delete --assignee "$pid" --yes </dev/null || die 1 "could not delete role assignments of $pid"
@@ -149,7 +168,8 @@ cmd_nuke() {
   az group delete -n "$rg" --yes </dev/null || die 1 "could not delete $rg"
 
   local repo reply
-  for repo in "$LIVE_REPO" "$MODULES_REPO"; do
+  # tf-31 creates the payments team's repo; it goes with the lab too, after the same question.
+  for repo in "$LIVE_REPO" "$MODULES_REPO" "$PREFIX-payments-app"; do
     printf 'Delete GitHub repo %s/%s? [y/N] ' "$GH_OWNER" "$repo"
     reply=""
     read -r reply || true

@@ -64,8 +64,8 @@ terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false"
 }
 
 @test "resume applies locally before pipelines exist" {
-  mkstacks shared env-prod observability
-  fake_tf shared env-prod observability
+  mkstacks shared env-prod teams/payments
+  fake_tf shared env-prod teams/payments
   : >"$LAB_HOME/paused"
   mark_done an-02
   mkdir -p "$LIVE/ansible"
@@ -77,8 +77,8 @@ terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false"
 terraform -chdir=$LIVE/terraform/shared apply -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/env-prod init -input=false
 terraform -chdir=$LIVE/terraform/env-prod apply -auto-approve -input=false
-terraform -chdir=$LIVE/terraform/observability init -input=false
-terraform -chdir=$LIVE/terraform/observability apply -auto-approve -input=false
+terraform -chdir=$LIVE/terraform/teams/payments init -input=false
+terraform -chdir=$LIVE/terraform/teams/payments apply -auto-approve -input=false
 ansible-playbook -i inventory site.yml"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
 }
@@ -146,6 +146,7 @@ gh repo delete learner/acme-platform --yes"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
   [[ "$output" == *"Delete GitHub repo learner/acme-platform? [y/N]"* ]]
   [[ "$output" == *"Delete GitHub repo learner/acme-terraform-modules? [y/N]"* ]]
+  [[ "$output" == *"Delete GitHub repo learner/acme-payments-app? [y/N]"* ]]
   [ ! -e "$LAB_HOME/progress" ]
   [ ! -e "$LAB_HOME/paused" ]
 }
@@ -311,4 +312,54 @@ gh workflow run terraform.yml --ref main -f stacks=all"
   [ "$status" -ne 0 ]
   [ -f "$LAB_HOME/paused" ]
   [[ "$(cat "$FAKE_LOG")" != *"stacks=all"* ]]
+}
+
+@test "pause leaves observability running (tf-29: the workspace survives a pause)" {
+  mkstacks shared observability landing-zone
+  fake_tf shared observability landing-zone
+  run "$LAB" pause
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_LOG")" != *observability* ]]
+  [[ "$(cat "$FAKE_LOG")" != *landing-zone* ]]
+}
+
+@test "pause disables and resume enables drift.yml (tf-27)" {
+  mkstacks shared
+  fake_tf shared
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/drift.yml"
+  fake_response gh "workflow disable drift.yml -R learner/acme-platform" 0
+  run "$LAB" pause
+  [ "$status" -eq 0 ]
+  [ "$(head -n1 "$FAKE_LOG")" = "gh workflow disable drift.yml -R learner/acme-platform" ]
+  : >"$FAKE_LOG"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  fake_response gh "workflow run terraform.yml --ref main -f stacks=all" 0
+  fake_response gh "workflow enable drift.yml -R learner/acme-platform" 0
+  run "$LAB" resume
+  [ "$status" -eq 0 ]
+  [ "$(tail -n1 "$FAKE_LOG")" = "gh workflow enable drift.yml -R learner/acme-platform" ]
+  [ ! -e "$LAB_HOME/paused" ]
+}
+
+@test "nuke deletes tf-26's click-ops group when it was never imported, and asks about the team repo" {
+  fake_sub
+  mkdir -p "$LAB_HOME/snapshots"
+  printf 'id
+time
+' >"$LAB_HOME/snapshots/tf-26.ids"
+  fake_response az "group exists -n rg-acme-legacy -o tsv" 0 "true"
+  fake_response az "group delete -n rg-acme-legacy --yes" 0
+  fake_response az "identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv" 3
+  fake_response az "group delete -n rg-acme-tfstate --yes" 0
+  fake_response gh "repo delete learner/acme-payments-app --yes" 0
+  run "$LAB" nuke <<<$'acme
+nuke
+n
+n
+y'
+  [ "$status" -eq 0 ]
+  grep -qx "az group delete -n rg-acme-legacy --yes" "$FAKE_LOG"
+  grep -qx "gh repo delete learner/acme-payments-app --yes" "$FAKE_LOG"
+  ! grep -q "repo delete learner/acme-platform" "$FAKE_LOG"
 }
