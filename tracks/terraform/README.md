@@ -21,13 +21,23 @@ and `./lab.sh init`.
 Later tasks and their checks assume these. Keep them in your own code.
 
 - **Version pins in every stack and module.** Stacks: `required_version = "~> 1.17"` and
-  `hashicorp/azurerm` `version = "~> 4.81"` (the latest 4.x minor on 2026-11-23). Modules
-  (from tf-16) state the range they work with instead: `required_version = ">= 1.17"` and
-  azurerm `version = ">= 4.81, < 5.0"`; the calling stack's pin decides what runs. The lab
-  stays on azurerm 4.x (5.x exists and breaks the lab's code). Stacks commit lock files
-  (`.terraform.lock.hcl`) from tf-30, and the reference leaves them out before that; modules
-  never do.
-- **Subscription ID in the provider block.** azurerm 4.x needs a subscription ID. Every stack
+  `hashicorp/azurerm` `version = "~> 4.81"` until tf-30, which upgrades every stack to
+  `"~> 5.14"` (the latest 5.x minor on 2026-11-23) following the provider's 5.0 upgrade guide.
+  Modules (from tf-16) state the range they work with instead: `required_version = ">= 1.17"`
+  and azurerm `version = ">= 4.81, < 5.0"`, from tf-30 `">= 5.14, < 6.0"`; the calling stack's
+  pin decides what runs. A provider major is a new major release of the modules repo (`v3.0.0`).
+  From tf-30 every stack commits its `.terraform.lock.hcl` with hashes for `linux_amd64` and
+  `windows_amd64` (`terraform providers lock -platform=linux_amd64 -platform=windows_amd64`);
+  the reference leaves them out before that, and modules never commit one.
+- **Resource providers (azurerm 5.x).** 5.x registers no Azure resource providers by itself.
+  Every stack's provider block lists the ones it uses in `resource_providers_to_register`
+  (env-dev: `Microsoft.App`, `Microsoft.Compute`, `Microsoft.KeyVault`,
+  `Microsoft.ManagedIdentity`, `Microsoft.Network`), so a fresh subscription works too.
+- **Dependabot (tf-30).** `.github/dependabot.yml` updates providers, lock files and module
+  refs (`?ref=` tags) in every stack directory it lists, weekly, minors and patches grouped in
+  one PR, majors alone; and the actions the workflows use, monthly. Its PRs are planned like
+  any other. A new stack needs its line there.
+- **Subscription ID in the provider block.** azurerm 4.x and 5.x need a subscription ID. Every stack
   sets it explicitly:
 
   ```hcl
@@ -51,12 +61,20 @@ Later tasks and their checks assume these. Keep them in your own code.
   `STACK_ORDER` in `.github/workflows/terraform.yml` (`landing-zone shared env-dev env-prod
   observability teams/payments`), then any others alphabetically. `bootstrap` is applied locally only:
   CI never manages its own identity. Nothing under `terraform/modules/` is ever a stack (tf-15).
+  `observability` (tf-29) owns the Log Analytics workspace and the Activity Log export, moved
+  out of landing-zone; `teams/payments` (tf-31, key `teams-payments.tfstate`) is the first
+  onboarded product team, one `team-env` module call. landing-zone also holds the click-ops
+  storage account imported in tf-26 (`rg-<prefix>-legacy`), because pause never destroys it.
 - **Jobs.** `plan` (pull requests) plans every stack and is the required status check (tf-06),
   so it never `needs:` another job: a job it waited for could fail and leave it skipped, and a
   skipped required check counts as passed. `apply` (pushes to `main`, manual runs) applies the
   selected stacks. From tf-24 `apply` skips `env-prod`, and a third job `apply-prod`
   (`needs: apply`, `environment: prod`) applies it after the `prod` environment's reviewer
   approves; its OIDC subject `…:environment:prod` matches the credential `gh-env-prod`.
+  `.github/workflows/drift.yml` (tf-27) plans every stack with `-detailed-exitcode` on weekday
+  mornings and on demand, never applies, opens or updates an issue labelled `drift` when Azure
+  differs from `main` and fails; a clean run closes that issue. It plans as `main` (credential
+  `gh-main`). `./lab.sh pause` disables it and `resume` enables it again.
 - **Modules.** The `spoke` module lives in `terraform/modules/spoke` from tf-15, and from tf-19
   in your public modules repo `<prefix>-terraform-modules` (directory `spoke/`, cloned to
   `MODULES_DIR`). Stacks call it as `module "spoke"`, so state addresses stay `module.spoke.*`
@@ -66,7 +84,9 @@ Later tasks and their checks assume these. Keep them in your own code.
   Module tests (`terraform test`, mock providers only) run in the plan job until tf-19, then in
   the modules repo's CI. A release tags the whole repo: `app-env` arrives in `v2.1.0` (tf-21),
   `linux-vm` in `v2.2.0` (tf-25), and a stack may pin different releases for different modules
-  (`module "app_env"`, `module "jump"`, `module "web"`). The modules repo's CI scans its modules
+  (`module "app_env"`, `module "jump"`, `module "web"`). `v3.0.0` (tf-30) moves every module to
+  azurerm 5.x (`spoke` takes `private_dns_zone_ids`, a map of zone name to ID), so every stack
+  pins `v3.0.0` from then on; `team-env` arrives in `v3.1.0` (tf-31). The modules repo's CI scans its modules
   with trivy; the platform repo's scan skips downloaded modules (`--tf-exclude-downloaded-modules`).
 - **Tags on every resource group.** `owner = "<your owner tag>"`, `env`, `managed_by =
   "terraform"`. The `env` values are `platform` (bootstrap: state and CI identity), `hub`
@@ -83,6 +103,10 @@ Later tasks and their checks assume these. Keep them in your own code.
   `~/.ssh/<prefix>_lab`, public by nature; the private key never goes into a repo), passed as
   `TF_VAR_learner_ip` and `TF_VAR_ssh_public_key`. Export the `TF_VAR_*` values in your shell
   before running those stacks locally (`./lab.sh pause` and `nuke` fill in harmless values).
+  Dependabot PRs get no Actions secrets, so `BUDGET_EMAIL` and `LEARNER_IP` also exist as
+  **Dependabot secrets** (`gh secret set --app dependabot …`, tf-30). From tf-31 the workflows
+  also pass their own `github.token` as `TF_VAR_github_token`: the team stacks look up their team
+  repo in GitHub's API, and anonymous calls are rate limited per runner IP.
 - **Workloads.** Each environment's identity and Key Vault come from the `app-env` module
   (tf-21). Vaults use RBAC, 7 days of soft delete and no purge protection, and the env stacks
   set `features { key_vault { purge_soft_delete_on_destroy = true } }` so pause/resume can
@@ -146,6 +170,11 @@ for new VNets, but the azurerm provider creates subnets with
 `default_outbound_access_enabled = true`, which Azure still accepts. A NAT gateway, the
 production answer, would cost 0.045 USD an hour plus data, more than all three VMs together.
 
+Phase 4 adds almost nothing: the imported legacy storage account (Standard LRS, a few files:
+cents a month, kept through pause), and the payments team's empty resource group, identity and
+budget (free). Drift runs and Dependabot use GitHub Actions minutes, which are free for public
+repos.
+
 Outbound traffic, everything that leaves the VNets:
 
 | From | To | Path |
@@ -156,6 +185,7 @@ Outbound traffic, everything that leaves the VNets:
 | Container Apps environment (`snet-aca`, delegated) | `acr<prefix><suffix>.azurecr.io` image pulls (public endpoint, Basic has no private link), Entra ID tokens for the app identity | egress the platform manages for a delegated subnet; Azure documents private subnets as not applicable to delegated subnets. No NSG rules on `snet-aca` restrict it |
 | Container Apps environment | Key Vault reference (`greeting`) | `vnet-<prefix>-dev` is linked to `privatelink.vaultcore.azure.net`, so the vault name resolves to `pe-kv-<prefix>-dev` in the same VNet; if the platform fetches the reference outside the VNet, it uses the vault's public endpoint (public access stays enabled) |
 | CI (GitHub-hosted runners), WSL | Key Vault, state account, ARM | public endpoints, Entra ID only |
+| CI, WSL (tf-31) | `api.github.com` (the team repo's IDs) | public endpoint, with the job's `GITHUB_TOKEN` in CI |
 
 Two things the pipeline can't do alone after `./lab.sh pause`: the new registry is empty, so
 `./lab.sh resume` applies `shared` first and imports the app image before the full run; and
@@ -163,7 +193,8 @@ Two things the pipeline can't do alone after `./lab.sh pause`: the new registry 
 
 **The pause rule:** as soon as VMs exist (phase 3), run `./lab.sh pause` whenever you stop for
 the day, and `./lab.sh resume` when you come back. Pause destroys the expensive stacks
-(shared, env-*, observability, teams/*) and keeps bootstrap and landing-zone. `./lab.sh cost`
+(shared, env-*, teams/*) and keeps bootstrap, landing-zone and observability (the Log Analytics
+workspace costs next to nothing with its daily cap, and keeps its logs and workspace ID). `./lab.sh cost`
 shows month-to-date spend. The budget from tf-12 alerts at 80 % of 300 kr. `./lab.sh nuke`
 removes everything, including the state account, when you're done.
 
