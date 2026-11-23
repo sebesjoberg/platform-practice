@@ -51,6 +51,13 @@ Later tasks and their checks assume these. Keep them in your own code.
 - **Tags on every resource group.** `owner = "<your owner tag>"`, `env`, `managed_by =
   "terraform"`. The `env` values are `platform` (bootstrap: state and CI identity), `hub`
   (landing-zone hub and shared services), `dev` and `prod`.
+- **Inputs.** From tf-07 stacks declare validated variables with the lab values as defaults,
+  so CI needs no tfvars file (`*.tfvars` is gitignored and the repo is public). The one
+  personal value, the budget alert address, is the repo variable `BUDGET_EMAIL`, which the
+  workflow passes as `TF_VAR_budget_email` (tf-12). Export `TF_VAR_budget_email` in your
+  shell before running landing-zone locally.
+- **Stacks share through Azure, not state.** From tf-14 the `env-dev` / `env-prod` stacks
+  find the hub with data sources (by name), never with `terraform_remote_state`.
 - **Names** follow the table in the task texts (e.g. `rg-<prefix>-hub`, `vnet-<prefix>-hub`).
   Graders check names, locations, SKUs, tags and CIDRs literally. File layout is up to you.
 - **Region** is `swedencentral` only (enforced by policy from tf-11).
