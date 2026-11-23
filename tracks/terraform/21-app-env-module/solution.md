@@ -2,10 +2,11 @@
 
 ## Approach
 
-1. Modules repo: write `app-env/main.tf` against the starter's variables, outputs and tests;
-   README, changelog, trivy ignore file; merge; tag `v2.1.0`.
-2. Platform repo: extend bootstrap and apply it locally; then one PR with the env-dev module
-   call, the provider feature and the trivy flag.
+1. Modules repo: copy the starters, write `app-env/main.tf` against the starter's variables,
+   outputs and tests; README, changelog; merge; tag `v2.1.0`.
+2. Platform repo: extend bootstrap (one GUID, plus the starter's `platform-owner.tf`) and apply
+   it locally; then one PR with the env-dev module call, the provider feature and the trivy
+   flag.
 
 ## Code
 
@@ -92,7 +93,7 @@ resource "azurerm_key_vault_secret" "this" {
 }
 ```
 
-`.trivyignore.yaml` (modules repo root) and the CI line:
+From the starter, `.trivyignore.yaml` (modules repo root) and the CI line:
 
 ```yaml
 misconfigurations:
@@ -109,7 +110,7 @@ misconfigurations:
 ```
 
 `terraform/bootstrap/identity.tf`: one more entry in `ci_assignable_roles`
-(`key_vault_secrets_officer = "b86a8fe4-44ce-4948-aee5-eccb2c155cd7"`). New file
+(`key_vault_secrets_officer = "b86a8fe4-44ce-4948-aee5-eccb2c155cd7"`). From the starter,
 `terraform/bootstrap/platform-owner.tf`:
 
 ```hcl
@@ -159,8 +160,10 @@ module "app_env" {
 ## Commands
 
 ```bash
+s=~/.platform-lab/starter/tf-21
 cd "$MODULES_DIR" && git switch main && git pull && git switch -c app-env
-# write app-env/main.tf, .trivyignore.yaml; edit CHANGELOG.md, README.md, .github/workflows/ci.yml
+cp -rn $s/modules/app-env . && cp $s/modules/.trivyignore.yaml . && cp $s/modules/.github/workflows/ci.yml .github/workflows/
+# write app-env/main.tf; edit CHANGELOG.md, README.md
 (cd app-env && terraform init -backend=false && terraform test &&
   terraform-docs markdown table --output-file README.md --output-mode inject .)
 git add -A && git commit -m "app-env module (2.1.0)" && git push -u origin app-env
@@ -168,7 +171,8 @@ gh pr create --fill && gh pr checks --watch && gh pr merge --squash --delete-bra
 git switch main && git pull && git tag -a v2.1.0 -m "app-env" && git push origin v2.1.0
 
 cd "$LIVE_DIR" && git switch main && git pull && git switch -c app-env-dev
-# edit terraform/bootstrap, terraform/env-dev, the workflow
+cp -n $s/live/terraform/bootstrap/platform-owner.tf terraform/bootstrap/
+# edit terraform/bootstrap/identity.tf, terraform/env-dev, the workflow
 terraform -chdir=terraform/bootstrap init && terraform -chdir=terraform/bootstrap apply
 git add -A && git commit -m "env-dev: app identity and Key Vault (app-env v2.1.0)"
 git push -u origin app-env-dev && gh pr create --fill && gh pr checks --watch

@@ -12,9 +12,16 @@ Traps:
   `./lab.sh pause` closes port 22 together with the VM. This works because landing-zone's NSG
   has no inline `security_rule` blocks; mixing inline rules and rule resources on one NSG makes
   them overwrite each other.
-- **Sensitive, not secret.** `sensitive = true` on `learner_ip` keeps it out of the public PR
-  plan comment (`(sensitive value)`). It's still in the state, which is fine: the state is
-  private.
+- **Secret and sensitive: two different leaks.** The repo secret keeps your IP out of the run
+  logs (GitHub prints `env:` values in every step log of a public repo and masks only secrets).
+  `sensitive = true` keeps it out of the public PR plan comment (`(sensitive value)`). It's still
+  in the state, which is fine: the state is private.
+- **Why two PRs?** The plan job plans every stack on the PR before anything is applied. A
+  `data "azurerm_virtual_machine"` in the env stacks would look for a jump VM that only the same
+  PR creates; the plan fails, and `plan` is the required check. So PR 1 builds the VMs, PR 2
+  grants the vault access. (tf-22 could avoid that by building the registry's ID from names; a
+  VM's principal ID only exists once the VM does.) The same applies while the lab is paused: a
+  PR planned then fails in the env stacks until `./lab.sh resume` brings the jump VM back.
 - **The image.** Ubuntu 24.04's offer is `ubuntu-24_04-lts` with sku `server` (Gen2), not the
   `0001-com-ubuntu-…` offers of older releases. `az vm image list -p Canonical -f ubuntu-24_04-lts --all -o table`
   lists them.

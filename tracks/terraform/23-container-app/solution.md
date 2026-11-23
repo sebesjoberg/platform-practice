@@ -10,6 +10,10 @@ Two resources and an output in env-dev, wired to what tf-21 and tf-22 built: the
 `terraform/env-dev/container-app.tf`:
 
 ```hcl
+locals {
+  acr_login_server = "${local.acr_name}.azurecr.io" # local.acr_name is in acr.tf (tf-22)
+}
+
 resource "azurerm_container_app_environment" "this" {
   name                               = "cae-${var.prefix}-${var.env}"
   resource_group_name                = module.spoke.resource_group_name
@@ -40,7 +44,7 @@ resource "azurerm_container_app" "hello" {
   }
 
   registry {
-    server   = data.azurerm_container_registry.shared.login_server
+    server   = local.acr_login_server
     identity = module.app_env.identity_id
   }
 
@@ -65,7 +69,7 @@ resource "azurerm_container_app" "hello" {
 
     container {
       name   = "hello"
-      image  = "${data.azurerm_container_registry.shared.login_server}/hello:1.0"
+      image  = "${local.acr_login_server}/hello:1.0"
       cpu    = 0.25
       memory = "0.5Gi"
 

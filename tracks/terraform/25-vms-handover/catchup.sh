@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# tf-25 catchup (after-push, cwd = LIVE_DIR): the SSH key pair and the two repo variables the
-# pipeline needs. The private key is ~/.ssh/<prefix>_lab, outside every repo; it is generated
-# here only if missing and never leaves this machine. tf-05's hook runs this script before it
-# dispatches the workflow whenever the workflow references these variables. It also tags v2.2.0
-# (normally already done by tf-05's hook). Idempotent.
+# tf-25 catchup (after-push, cwd = LIVE_DIR): the SSH key pair and the two repo settings the
+# pipeline needs: the variable SSH_PUBLIC_KEY (public by nature) and the secret LEARNER_IP
+# (masked in the public run logs). The private key is ~/.ssh/<prefix>_lab, outside every repo;
+# it is generated here only if missing and never leaves this machine. tf-05's hook runs this
+# script before it dispatches the workflow whenever the workflow references them. It also tags
+# v2.2.0 (normally already done by tf-05's hook). Idempotent.
 set -euo pipefail
 
 repo="$GH_OWNER/$LIVE_REPO"
@@ -19,8 +20,8 @@ elif [[ ! -f "$key.pub" ]]; then
 fi
 gh variable set SSH_PUBLIC_KEY -R "$repo" --body "$(cat "$key.pub")"
 [[ -n "${LEARNER_IP:-}" ]] || { echo "tf-25: LEARNER_IP is not set; run ./lab.sh init --refresh-ip" >&2; exit 1; }
-gh variable set LEARNER_IP -R "$repo" --body "$LEARNER_IP"
-echo "tf-25: repo variables SSH_PUBLIC_KEY ($key.pub) and LEARNER_IP ($LEARNER_IP) are set"
+gh secret set LEARNER_IP -R "$repo" --body "$LEARNER_IP"
+echo "tf-25: repo variable SSH_PUBLIC_KEY ($key.pub) and repo secret LEARNER_IP ($LEARNER_IP) are set"
 
 if [[ "${CATCHUP_PHASE:-}" == after-push && -d "${MODULES_DIR:-}/.git" ]]; then
   # shellcheck source=/dev/null

@@ -2,8 +2,9 @@
 
 ## Approach
 
-A new stack with a resource group and a registry; in env-dev a data source and one role
-assignment. One PR. After the apply, import the image.
+A new stack with a resource group and a registry; in env-dev one role assignment on the
+registry's ID, built from names so the PR's plan doesn't need the registry yet. One PR. After
+the apply, import the image.
 
 ## Code
 
@@ -41,13 +42,15 @@ output "acr_login_server" {
 `terraform/env-dev/acr.tf`:
 
 ```hcl
-data "azurerm_container_registry" "shared" {
-  name                = "acr${var.prefix}${var.suffix}"
-  resource_group_name = "rg-${var.prefix}-shared"
+data "azurerm_client_config" "current" {}
+
+locals {
+  acr_name = "acr${var.prefix}${var.suffix}"
+  acr_id   = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/rg-${var.prefix}-shared/providers/Microsoft.ContainerRegistry/registries/${local.acr_name}"
 }
 
 resource "azurerm_role_assignment" "app_acr_pull" {
-  scope                = data.azurerm_container_registry.shared.id
+  scope                = local.acr_id
   role_definition_name = "AcrPull"
   principal_id         = module.app_env.identity_principal_id
   principal_type       = "ServicePrincipal"

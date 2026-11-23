@@ -1,7 +1,7 @@
 ---
 id: tf-21
 title: An app environment module
-target_minutes: 20
+target_minutes: 25
 requires: [tf-20]
 ---
 # tf-21 An app environment module
@@ -10,10 +10,21 @@ The first product team wants to ship a service to dev next week, and prod soon a
 an identity to run as and a place for secrets, and the CTO wants prod to get exactly what dev
 gets. So it's a module, released from the modules repo like `spoke`.
 
-`./lab.sh next` has saved a starter in `~/.platform-lab/starter/tf-21/app-env/`:
-`versions.tf`, `variables.tf`, `outputs.tf` and `tests/app-env.tftest.hcl`. Copy it into the
-modules repo (`cp -rn ~/.platform-lab/starter/tf-21/app-env "$MODULES_DIR/"`). The tests
-describe what the module must do. You write `main.tf`.
+This task gets 25 minutes: a module with five kinds of resources, its release, and a bootstrap
+change before the platform PR. The starters take care of the parts that aren't the lesson.
+
+`./lab.sh next` has saved starters in `~/.platform-lab/starter/tf-21/` (it printed the copy
+commands):
+
+- `modules/app-env/`: `versions.tf`, `variables.tf`, `outputs.tf` and
+  `tests/app-env.tftest.hcl`. The tests describe what the module must do. You write `main.tf`.
+  `cp -rn ~/.platform-lab/starter/tf-21/modules/app-env "$MODULES_DIR/"`
+- `modules/.trivyignore.yaml` (the vault's public access, AZU-0013, accepted with its reason)
+  and `modules/.github/workflows/ci.yml` (tf-19's CI, now passing that file to trivy). Copy both
+  over the modules repo's versions.
+- `live/terraform/bootstrap/platform-owner.tf`: gives you `Key Vault Secrets Officer` on the
+  subscription. Being Owner gives you no access to secrets in an RBAC vault, and
+  `./lab.sh pause` deletes them as you.
 
 ## Deliverables
 
@@ -33,16 +44,15 @@ with the tags `owner`, `env`, `managed_by = "terraform"`:
       time to reach the data plane: a `time_sleep` of 120 seconds between them.
 - [ ] `terraform test` passes and the README's generated section is up to date.
 
-Also in `{{MODULES_REPO}}`: `app-env` in the root README's module table, a `2.1.0` entry in
-`CHANGELOG.md`, and a `.trivyignore.yaml` that accepts `AZU-0013` (public network access) for
-`app-env/main.tf` only, with the reason. CI passes it to trivy (`--ignorefile`). CI green on
-`main`, then tag `v2.1.0` and push it.
+Also in `{{MODULES_REPO}}`: the starter's `.trivyignore.yaml` and `ci.yml`, `app-env` in the
+root README's module table and a `2.1.0` entry in `CHANGELOG.md`. CI green on `main`, then tag
+`v2.1.0` and push it.
 
 In `{{LIVE_REPO}}`:
 
 - [ ] `terraform/bootstrap`: add `Key Vault Secrets Officer`
-      (`b86a8fe4-44ce-4948-aee5-eccb2c155cd7`) to the roles the CI identity may assign, and give
-      yourself `Key Vault Secrets Officer` on the subscription. Apply bootstrap locally.
+      (`b86a8fe4-44ce-4948-aee5-eccb2c155cd7`) to the roles the CI identity may assign, and add
+      the starter's `platform-owner.tf`. Apply bootstrap locally, before the PR below.
 - [ ] `terraform/env-dev`: `module "app_env"` from `//app-env?ref=v2.1.0` (spoke stays on
       `v2.0.0`), a variable `suffix` (default `{{SUFFIX}}`), and one secret
       `greeting = "Hello from {{PREFIX}} dev"`. The provider block gets
@@ -58,4 +68,4 @@ In `{{LIVE_REPO}}`:
 `az keyvault secret show --vault-name kv-{{PREFIX}}-dev-{{SUFFIX}} -n greeting --query value`
 prints the greeting, and `./lab.sh grade` passes.
 
-Target: 20 minutes.
+Target: 25 minutes.

@@ -19,9 +19,11 @@ service. Its stack, `shared`, already has a place in the pipeline's `STACK_ORDER
     `env = "hub"`, `managed_by = "terraform"`
   - container registry `acr{{PREFIX}}{{SUFFIX}}` in it: SKU `Basic`, admin user disabled
   - output `acr_login_server`
-- [ ] In `terraform/env-dev`: find the registry with a data source and give
-      `id-{{PREFIX}}-app-dev` the role `AcrPull` on it.
-- [ ] One PR, merged, applied by the pipeline (shared runs before env-dev).
+- [ ] In `terraform/env-dev`: give `id-{{PREFIX}}-app-dev` the role `AcrPull` on the registry.
+      Build the registry's resource ID from names in `locals`, **not** with a data source: the
+      PR's plan runs before the registry exists, and a data source would fail it.
+- [ ] One PR, merged, applied by the pipeline: shared runs before env-dev, so the registry exists
+      when the role assignment is created.
 - [ ] Then put the app image into the registry. Terraform doesn't push images; you import
       Microsoft's Container Apps quickstart image once:
 

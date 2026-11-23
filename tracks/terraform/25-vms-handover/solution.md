@@ -4,10 +4,11 @@
 
 1. Modules repo: `linux-vm/main.tf` against the starter, README, changelog; merge; tag
    `v2.2.0`.
-2. Repo variables `LEARNER_IP` and `SSH_PUBLIC_KEY`, and the two `TF_VAR_*` lines in the
-   workflow.
-3. One PR: the jump VM, its SSH rule and Reader role in `shared`; the web VMs in env-dev; Key
-   Vault access for the jump VM in both env stacks.
+2. The repo secret `LEARNER_IP` and the repo variable `SSH_PUBLIC_KEY`.
+3. PR 1: the two `TF_VAR_*` lines in the workflow, the jump VM, its SSH rule and Reader role in
+   `shared`, the web VMs in env-dev. Merge, apply, approve prod.
+4. PR 2: Key Vault access for the jump VM in both env stacks. Its data source needs the VM that
+   PR 1 created, so it can only be planned after PR 1 is applied.
 
 ## Code
 
@@ -130,7 +131,7 @@ output "jump_public_ip" {
 }
 ```
 
-`terraform/shared/variables.tf` adds:
+`terraform/shared/variables-access.tf` (from the starter):
 
 ```hcl
 variable "learner_ip" {
@@ -139,7 +140,7 @@ variable "learner_ip" {
 
   validation {
     condition     = can(cidrhost("${var.learner_ip}/32", 0)) && can(regex("^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$", var.learner_ip))
-    error_message = "learner_ip must be one IPv4 address (set the GitHub variable LEARNER_IP)."
+    error_message = "learner_ip must be one IPv4 address (set the GitHub secret LEARNER_IP)."
   }
 }
 
@@ -152,7 +153,7 @@ variable "ssh_public_key" {
 }
 ```
 
-`terraform/env-dev/web.tf` (and `variable "ssh_public_key"` in env-dev):
+`terraform/env-dev/web.tf` (`variable "ssh_public_key"` comes from the starter's `env-dev/variables-access.tf`):
 
 ```hcl
 module "web" {
@@ -172,7 +173,7 @@ output "web_private_ips" {
 }
 ```
 
-`terraform/env-dev/jump-access.tf` and `terraform/env-prod/jump-access.tf`:
+PR 2, `terraform/env-dev/jump-access.tf` and `terraform/env-prod/jump-access.tf`:
 
 ```hcl
 data "azurerm_virtual_machine" "jump" {
@@ -188,17 +189,17 @@ resource "azurerm_role_assignment" "jump_secrets_user" {
 }
 ```
 
-Workflow env:
+Workflow env (PR 1):
 
 ```yaml
-  TF_VAR_learner_ip: ${{ vars.LEARNER_IP }}
+  TF_VAR_learner_ip: ${{ secrets.LEARNER_IP }}
   TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
 ```
 
 ## Commands
 
 ```bash
-gh variable set LEARNER_IP -R {{GH_OWNER}}/{{LIVE_REPO}} --body {{LEARNER_IP}}
+gh secret set LEARNER_IP -R {{GH_OWNER}}/{{LIVE_REPO}} --body {{LEARNER_IP}}
 gh variable set SSH_PUBLIC_KEY -R {{GH_OWNER}}/{{LIVE_REPO}} < ~/.ssh/{{PREFIX}}_lab.pub
 
 cd "$MODULES_DIR" && git switch main && git pull && git switch -c linux-vm
@@ -208,11 +209,21 @@ git add -A && git commit -m "linux-vm module (2.2.0)" && git push -u origin linu
 gh pr create --fill && gh pr checks --watch && gh pr merge --squash --delete-branch
 git switch main && git pull && git tag -a v2.2.0 -m "linux-vm" && git push origin v2.2.0
 
+cp -rn ~/.platform-lab/starter/tf-25/live/terraform/. "$LIVE_DIR/terraform/"
+
+# PR 1: the machines
 cd "$LIVE_DIR" && git switch main && git pull && git switch -c vms
-# edit terraform/shared, terraform/env-dev, terraform/env-prod, the workflow
+# edit terraform/shared, terraform/env-dev/web.tf, the workflow
 git add -A && git commit -m "VMs: jump host and two web servers (linux-vm v2.2.0)"
-git push -u origin vms && gh pr create --fill && gh pr checks --watch
-gh pr merge --squash --delete-branch && gh run watch    # approve apply-prod
+git push -u origin vms && gh pr create --fill && gh pr checks --watch && gh pr merge --squash --delete-branch
+gh run watch    # apply, then approve apply-prod (Review deployments)
+
+# PR 2: the jump host reads the vaults (plans only now that vm-{{PREFIX}}-jump exists)
+git switch main && git pull && git switch -c jump-vault-access
+# write terraform/env-dev/jump-access.tf and terraform/env-prod/jump-access.tf
+git add -A && git commit -m "env stacks: Key Vault Secrets User for the jump VM"
+git push -u origin jump-vault-access && gh pr create --fill && gh pr checks --watch && gh pr merge --squash --delete-branch
+gh run watch    # approve apply-prod again
 ```
 
 ## Verify

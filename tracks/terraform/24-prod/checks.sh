@@ -30,8 +30,8 @@ check_code "env-prod uses spoke v2 (vnet_cidr) and app-env from the modules repo
   "terraform/env-prod needs spoke ?ref=v2.0.0 with vnet_cidr, module \"app_env\" from //app-env?ref=v2.1.0 and features { key_vault { purge_soft_delete_on_destroy = true } }, like env-dev"
 
 check_code "env-prod gives its app identity AcrPull on the shared registry" \
-  'grep -rqsE "^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-prod --include="*.tf" && grep -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-prod --include="*.tf"' \
-  "in terraform/env-prod: the registry data source and AcrPull for module.app_env's identity, as in env-dev"
+  'grep -rqsE "Microsoft\.ContainerRegistry/registries/|^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-prod --include="*.tf" && grep -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-prod --include="*.tf"' \
+  "in terraform/env-prod: AcrPull on the registry (ID built from names, as in env-dev) for module.app_env's identity, as in env-dev"
 
 check_code "a job in the prod environment applies env-prod after apply, and apply skips it" \
   'tf24_prod_job "$TF24_WF"' \

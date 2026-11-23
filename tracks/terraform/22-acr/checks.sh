@@ -15,8 +15,8 @@ check_code "the shared stack has its own state key and a Basic registry" \
   "terraform/shared needs backend \"azurerm\" with key = \"shared.tfstate\" and an azurerm_container_registry with sku = \"Basic\""
 
 check_code "env-dev gives the app identity AcrPull on the shared registry" \
-  'grep -rqsE "^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-dev --include="*.tf" && grep -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-dev --include="*.tf"' \
-  "in terraform/env-dev: data \"azurerm_container_registry\" for acr$PREFIX$SUFFIX and an azurerm_role_assignment with role_definition_name = \"AcrPull\" for the app identity"
+  'grep -rqsE "Microsoft\.ContainerRegistry/registries/|^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-dev --include="*.tf" && grep -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-dev --include="*.tf"' \
+  "in terraform/env-dev: an azurerm_role_assignment scoped to the registry acr$PREFIX$SUFFIX (its ID built from names, .../providers/Microsoft.ContainerRegistry/registries/acr$PREFIX$SUFFIX) with role_definition_name = \"AcrPull\" for the app identity"
 
 check "rg-$PREFIX-shared exists in $LOCATION with the required tags" \
   'az group show -n "rg-$PREFIX-shared" -o json | jq -e "$TF22_RG_JQ" >/dev/null' \

@@ -2,6 +2,11 @@
 # and one app that runs as the app identity, pulls its image from the shared registry and reads
 # one Key Vault secret.
 
+locals {
+  # The shared registry's login server, from its name (acr.tf builds local.acr_name).
+  acr_login_server = "${local.acr_name}.azurecr.io"
+}
+
 # A workload profiles environment with only the free Consumption profile: apps scale to zero and
 # cost nothing while idle. VNet integration needs snet-aca delegated to Microsoft.App/environments
 # (the spoke module does that). External ingress: the app gets a public HTTPS FQDN. Its traffic
@@ -48,7 +53,7 @@ resource "azurerm_container_app" "hello" {
 
   # Pull with the app identity (AcrPull, tf-22): no registry password anywhere.
   registry {
-    server   = data.azurerm_container_registry.shared.login_server
+    server   = local.acr_login_server
     identity = module.app_env.identity_id
   }
 
@@ -76,7 +81,7 @@ resource "azurerm_container_app" "hello" {
 
     container {
       name   = "hello"
-      image  = "${data.azurerm_container_registry.shared.login_server}/hello:1.0"
+      image  = "${local.acr_login_server}/hello:1.0"
       cpu    = 0.25
       memory = "0.5Gi"
 
