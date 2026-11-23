@@ -6,11 +6,6 @@
     fail_msg: "no release {{ acme_hello_version }} in roles/acme_hello/files/releases/"
     quiet: true
 
-- name: Create the configuration group (it owns app.env)
-  ansible.builtin.group:
-    name: "{{ acme_hello_config_group }}"
-    system: true
-
 - name: Create the service group
   ansible.builtin.group:
     name: "{{ acme_hello_user }}"
@@ -20,8 +15,6 @@
   ansible.builtin.user:
     name: "{{ acme_hello_user }}"
     group: "{{ acme_hello_user }}"
-    groups: ["{{ acme_hello_config_group }}"]
-    append: true
     system: true
     shell: /usr/sbin/nologin
     home: /nonexistent

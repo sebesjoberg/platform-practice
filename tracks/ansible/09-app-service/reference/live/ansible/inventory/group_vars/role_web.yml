@@ -10,9 +10,10 @@ ansible_ssh_common_args: >-
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
   {{ ansible_user }}@{{ jump_host_ip }}"
 
-# The app release the web servers run: a directory in roles/acme_hello/files/releases. One knob
-# for every deploy: ansible-playbook site.yml -e app_version=1.1.0 (an-11), and an-18's grader
-# tries -e app_version=broken.
+# The app release the web servers run: a directory in roles/acme_hello/files/releases. This line is
+# the source of truth: a deploy or rollback changes it (reviewed, merged, applied). -e app_version=
+# is for one-off experiments only (e.g. the broken release); the next plain site.yml run, the
+# graders' included, deploys this version again.
 app_version: "1.0.0"
 
 # Role acme_hello.

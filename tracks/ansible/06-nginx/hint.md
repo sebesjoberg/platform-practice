@@ -7,11 +7,16 @@ Docs:
 - `ansible.builtin.uri` (for the Molecule verifier: the container has no curl): https://docs.ansible.com/ansible/latest/collections/ansible/builtin/uri_module.html
 
 Traps:
-- **`validate` checks the temp file alone.** `nginx -t -c %s` on a vhost snippet fails: no
-  `events`, no `http`. Either own the whole `nginx.conf` (and keep the server block in it, or in a
-  file the role writes before it), or write the snippet and run `nginx -t` in a task afterwards,
-  restoring the old file when it fails. Validating the main file while the snippet is already in
-  `conf.d/` does not protect you: the snippet is live on the next reload whatever the result.
+- **`validate` checks the temp file alone, and only when that file changes.** `nginx -t -c %s` on a
+  vhost snippet fails: no `events`, no `http`. And a `validate:` on `nginx.conf` doesn't look at a
+  snippet another task writes: when only the snippet changes, `nginx.conf` is unchanged, nothing is
+  validated, and the broken snippet is live on the next reload (the outage in the story). Two safe
+  shapes: the role owns the whole `nginx.conf` with the server block in it (what the solution
+  does), or the task that writes the snippet validates it itself, by wrapping it into a complete
+  config, e.g. `validate: bash -c 'printf "events {}\nhttp { include /etc/nginx/mime.types; include %s; }" > /tmp/v.conf && nginx -t -q -c /tmp/v.conf'`.
+  Either way the grader looks for a `validate:` that runs `nginx -t` on `%s` (directly or wrapped);
+  a "write first, `nginx -t` afterwards, restore on failure" task doesn't count, since the broken
+  file sits in `/etc/nginx` in between.
 - **Relative includes break under `-c`.** nginx resolves relative paths against the directory of
   the file it checks, a temp directory during validation. Write `include /etc/nginx/mime.types;`,
   not `include mime.types;`.

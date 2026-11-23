@@ -4,8 +4,9 @@
 
 Releases as artifacts: each version is a directory under the role's `files/releases/`, copied to
 `/opt/acme-hello/releases/<version>/` and activated by pointing `/opt/acme-hello/current` at it.
-The unit runs `current/acme_hello.py` as the system user `acme-hello` (in group `acme`), with
-hardening that splits into a part that works everywhere and a mount-namespace part behind
+The unit runs `current/acme_hello.py` as the system user `acme-hello`, which needs no access to
+`app.env` (systemd reads `EnvironmentFile=` as root before it drops privileges), with hardening
+that splits into a part that works everywhere and a mount-namespace part behind
 `acme_hello_sandbox` (off in Molecule only). Changes notify one restart handler, flushed before a
 `uri` loop that waits for `ok <version>`: the version the running code reports, not the one in
 the config. nginx gets an optional `nginx_proxy_pass`.
@@ -29,7 +30,7 @@ nginx_proxy_pass: http://127.0.0.1:8080
     that: (role_path ~ '/files/releases/' ~ acme_hello_version ~ '/acme_hello.py') is file
     quiet: true
 
-# groups acme and acme-hello (system), user acme-hello: system, nologin, groups [acme]
+# group acme-hello and user acme-hello: system, nologin, no home
 
 - name: Create the release directory
   ansible.builtin.file:
@@ -92,7 +93,6 @@ Handler: `Restart acme-hello`, `systemd_service` with `state: restarted` and `da
 [Service]
 User={{ acme_hello_user }}
 Group={{ acme_hello_user }}
-SupplementaryGroups={{ acme_hello_config_group }}
 EnvironmentFile=-{{ acme_hello_env_file }}
 Environment=APP_ENV={{ acme_hello_env }} APP_PORT={{ acme_hello_port }}
 ExecStart=/usr/bin/python3 {{ acme_hello_home }}/current/acme_hello.py
@@ -147,8 +147,8 @@ cd "$LIVE_DIR/ansible" && source .venv/bin/activate
 (cd roles/acme_hello && molecule test)
 ansible-lint && ansible-playbook site.yml
 ansible role_web -b -m ansible.builtin.shell -a 'curl -s localhost/; curl -s localhost/health; systemd-analyze security acme-hello.service | tail -1'
-ansible-playbook site.yml -e app_version=broken     # fails at "Wait until the app reports healthy"
-ansible-playbook site.yml                           # back on 1.0.0
+ansible-playbook site.yml -e app_version=broken     # one-off: fails at "Wait until the app reports healthy"
+ansible-playbook site.yml                           # the inventory's 1.0.0 again
 ansible-playbook site.yml                           # changed=0
 ```
 

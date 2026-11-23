@@ -14,7 +14,8 @@ Traps:
 - **The jump host can't resolve the web VMs' names**: Azure's internal DNS works per VNet, and
   they are in another one. Use IPs.
 - **Ubuntu's default `haproxy.cfg` already has the admin socket line**; a template that replaces
-  the file must keep it (`mode 660 level admin`), or an-11 has nothing to talk to.
+  the file must keep it, or an-11 has nothing to talk to. The master process creates the socket
+  as root: without a `group` parameter on the `stats socket` line, `mode 660` lets only root in.
 - **Health checks hit nginx on 80**, which proxies `/health` to the app: a broken release takes
   the server out of the pool by itself. Port 443 isn't needed between HAProxy and the web VMs.
 - **Run the web play first.** HAProxy's first checks after a fresh deploy otherwise find nothing

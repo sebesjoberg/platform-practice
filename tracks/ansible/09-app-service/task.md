@@ -20,16 +20,19 @@ and a Molecule scenario. The app itself is given.
 - [ ] Role `ansible/roles/acme_hello` (variables `acme_hello_`), applied to `role_web` after
       `app_env` and before `nginx`. The releases ship in the role's
       `files/releases/<version>/acme_hello.py`.
-- [ ] A fleet variable **`app_version`** (default `1.0.0`, in the web servers' group variables)
-      picks the release; `-e app_version=1.1.0` deploys another. Releases sit side by side on the
-      VM, and switching between them doesn't delete the others.
-- [ ] systemd unit `acme-hello.service`: a dedicated non-root user (or `DynamicUser=yes`), in the
-      group `acme` that may read `/etc/acme/app.env`, which the unit loads; the app listens on
+- [ ] A fleet variable **`app_version`** (`1.0.0`, in the web servers' group variables) picks the
+      release. The inventory is the source of truth: deploying another release means changing
+      that line; `-e app_version=…` is only for one-off experiments, and the next plain run puts
+      the inventory's version back. Releases sit side by side on the VM, and switching between
+      them doesn't delete the others.
+- [ ] systemd unit `acme-hello.service`: a dedicated non-root user (or `DynamicUser=yes`); the
+      unit loads `/etc/acme/app.env` with `EnvironmentFile=` (systemd reads it as root before it
+      drops privileges, so the user needs no access to the file); the app listens on
       `127.0.0.1:8080` (`APP_PORT`) and shows the environment (`APP_ENV`); restarts on failure;
       hardened so that `systemd-analyze security acme-hello.service` rates it **below 5.0**.
 - [ ] After any change the role restarts the app, then waits with `ansible.builtin.uri` until
       `/health` answers `ok <app_version>`. A release that doesn't get there fails the run. Try
-      `-e app_version=broken` once (then deploy `1.0.0` again).
+      `-e app_version=broken` once, a one-off; a plain `site.yml` run then restores `1.0.0`.
 - [ ] nginx proxies every request (`/`, `/health`) to the app, on 80 and 443.
 - [ ] Molecule scenario for `acme_hello`. Whatever an unprivileged container can't run is switched
       off by a documented role variable, defaults unchanged for the VMs.

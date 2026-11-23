@@ -19,7 +19,8 @@ of the job now.
 - [ ] Frontend on port 80 → backend **`web`** with both web VMs, round robin, addressed by their
       **private IPs from the inventory** (no IP in any file), HTTP health check on `/health`; a
       server failing it leaves the pool.
-- [ ] Runtime API: `stats socket /run/haproxy/admin.sock mode 660 level admin`.
+- [ ] Runtime API: `stats socket /run/haproxy/admin.sock`, mode `660`, group `haproxy`, level
+      `admin`: root and the members of `haproxy` may drain and enable servers.
 - [ ] The configuration is a template validated with `haproxy -c -f %s` and applied through a
       reload handler.
 - [ ] Not on the internet: no NSG change. Test from the jump host itself (`curl -s localhost`) or

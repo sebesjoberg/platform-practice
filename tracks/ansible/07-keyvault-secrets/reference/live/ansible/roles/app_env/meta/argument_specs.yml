@@ -14,4 +14,4 @@ argument_specs:
         description: Path of the environment file.
       app_env_group:
         type: str
-        description: Group that may read the file besides root.
+        description: Group that may read the file besides root (operators, apps that open it themselves).

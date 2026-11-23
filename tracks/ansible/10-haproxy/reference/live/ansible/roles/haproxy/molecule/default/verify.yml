@@ -24,10 +24,11 @@
         path: /run/haproxy/admin.sock
       register: haproxy_verify_socket
 
-    - name: The admin socket exists with mode 0660
+    - name: The admin socket exists, group haproxy, mode 0660
       ansible.builtin.assert:
         that:
           - haproxy_verify_socket.stat.issock
+          - haproxy_verify_socket.stat.gr_name == "haproxy"
           - haproxy_verify_socket.stat.mode == "0660"
 
     - name: Ask the Runtime API for the servers of backend web

@@ -3,9 +3,11 @@
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/ansible.sh"
 
-check_code "role nginx writes its configuration with validate: nginx -t -c %s, and reloads through a handler" \
-  'r=ansible/roles/nginx && grep -rqE "validate:[^#]*nginx[^#]*[[:space:]]-t" "$r/tasks" && grep -rqE "validate:[^#]*[[:space:]]-c[[:space:]]+%s" "$r/tasks" && grep -rqE "notify:" "$r/tasks" && grep -rqsiE "reload" "$r/handlers"' \
-  "ansible/roles/nginx: a template task with validate: /usr/sbin/nginx -t -c %s (on a complete configuration) and notify:, and a handler in roles/nginx/handlers that reloads nginx"
+# validate: on one line naming nginx, -t and %s: `nginx -t -c %s` on the whole nginx.conf, or a
+# wrapper that includes the snippet %s into a complete config.
+check_code "role nginx writes its configuration with validate: nginx -t on %s, and reloads through a handler" \
+  'r=ansible/roles/nginx && [[ -d "$r/tasks" ]] && find "$r/tasks" -type f -name "*.y*ml" -exec awk "/validate:/ && /nginx/ && /[[:space:]]-t/ && /%s/ { f = 1 } END { exit !f }" {} + && grep -rqE "notify:" "$r/tasks" && grep -rqsiE "reload" "$r/handlers"' \
+  "ansible/roles/nginx: the template task gets validate: /usr/sbin/nginx -t -c %s (on a complete configuration, or a wrapper that includes the snippet %s into one) and notify:, and a handler in roles/nginx/handlers reloads nginx"
 
 check_code "a play for role_web applies role nginx" \
   'an_play_applies role_web nginx' \

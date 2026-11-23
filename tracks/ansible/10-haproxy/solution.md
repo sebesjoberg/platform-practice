@@ -25,7 +25,7 @@ haproxy_backends: >-
 global
     log /dev/log local0
     chroot /var/lib/haproxy
-    stats socket {{ haproxy_admin_socket }} mode 660 level admin expose-fd listeners
+    stats socket {{ haproxy_admin_socket }} mode 660 group {{ haproxy_admin_group }} level admin expose-fd listeners
     stats timeout 30s
     user haproxy
     group haproxy
@@ -89,7 +89,8 @@ backend {{ haproxy_backend_name }}
 
 Defaults: `haproxy_bind: "*"`, `haproxy_frontend_port: 80`, `haproxy_backend_name: web`,
 `haproxy_backend_port: 80`, `haproxy_health_path: /health`,
-`haproxy_admin_socket: /run/haproxy/admin.sock`, `haproxy_mount_namespace: true`.
+`haproxy_admin_socket: /run/haproxy/admin.sock`, `haproxy_admin_group: haproxy`,
+`haproxy_mount_namespace: true`.
 Handler `Reload haproxy`: `systemd_service` `state: reloaded`.
 
 `site.yml`, the third play:
@@ -106,7 +107,7 @@ Molecule: `prepare.yml` writes `/srv/web-{a,b}/index.html` and `health` and star
 `systemd-run --unit fake-web-a /usr/bin/python3 -m http.server 8081 --bind 127.0.0.2 ...` (and
 `web-b` on `127.0.0.3`); `converge.yml` passes those two as `haproxy_backends` with
 `haproxy_backend_port: 8081` and `haproxy_mount_namespace: false`; `verify.yml` checks
-`haproxy -c`, the unit, the socket (`issock`, `0660`), `show servers state web` through socat,
+`haproxy -c`, the unit, the socket (`issock`, group `haproxy`, `0660`), `show servers state web` through socat,
 and that ten `uri` requests to `http://127.0.0.1/` reached both.
 
 ## Commands

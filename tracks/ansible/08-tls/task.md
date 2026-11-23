@@ -34,7 +34,9 @@ piped into `openssl x509 -noout -fingerprint -sha1` shows, for both web VMs, the
 `az keyvault certificate show --vault-name kv-{{PREFIX}}-dev-{{SUFFIX}} -n web-tls --query x509ThumbprintHex -o tsv`
 prints (without the colons), and `./lab.sh grade` passes.
 
-After `./lab.sh pause` / `resume` the vault is new: `tracks/ansible/lib/keyvault-prereqs.sh` from
-the lab directory restores your role and issues a new certificate; then run `site.yml`.
+After `./lab.sh pause` / `resume` the vault is new: `./lab.sh resume` restores your role, issues a
+new certificate (new thumbprint) and re-runs `site.yml`. If that fails, run
+`tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory, then `ansible-playbook site.yml`
+from `ansible/`.
 
 Target: 20 minutes.

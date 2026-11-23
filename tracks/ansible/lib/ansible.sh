@@ -245,39 +245,63 @@ an_az_retry() {
   return "$rc"
 }
 
+# an_kv_count <kind> <vault> <name> [list-args...]: how many objects named <name> `az keyvault
+# <kind> list` (or list-deleted, via the extra args) returns: 0 or 1. Fails, printing nothing,
+# when the listing fails: callers must never take a failed listing for "not there" and create (a
+# new secret version overwrites the value; a new certificate version changes the thumbprint).
+# 403s right after a role assignment are retried for up to 10 minutes.
+an_kv_count() {
+  local kind=$1 kv=$2 name=$3 n
+  shift 3
+  n="$(an_az_retry 20 30 az keyvault "$kind" "${@:-list}" --vault-name "$kv" --query "length([?name=='$name'])" -o tsv)" || return 1
+  [[ "$n" =~ ^[01]$ ]] || return 1
+  echo "$n"
+}
+
 # an_kv_secret_ensure (an-07's prerequisite): secret app-greeting in the dev vault, with a random
 # value. Never overwrites an existing value; recovers a soft-deleted one. Records the value in
 # $LAB_HOME/snapshots/an-07.value (mode 0600) for the grader. Runs as you (az login): tf-21 made
-# you Key Vault Secrets Officer on the subscription.
+# you Key Vault Secrets Officer on the subscription. Returns 1 on any Azure error, having created
+# nothing it couldn't prove was missing.
 an_kv_secret_ensure() {
-  local kv snap v tmp
+  local kv snap v tmp n
   kv="$(an_kv_name)"
   snap="${LAB_HOME:?}/snapshots/an-07.value"
   az keyvault show -n "$kv" --query id -o tsv >/dev/null || {
     echo "an-07: Key Vault $kv not found: the tf-25 state is missing (./lab.sh resume, or ./lab.sh catchup tf-25)" >&2
     return 1
   }
-  if [[ "$(az keyvault secret list --vault-name "$kv" --query "length([?name=='app-greeting'])" -o tsv)" == 1 ]]; then
+  n="$(an_kv_count secret "$kv" app-greeting list)" || {
+    echo "an-07: cannot list the secrets of $kv; nothing changed" >&2
+    return 1
+  }
+  if [[ "$n" == 1 ]]; then
     echo "an-07: secret app-greeting already in $kv (kept)"
-  elif [[ "$(az keyvault secret list-deleted --vault-name "$kv" --query "length([?name=='app-greeting'])" -o tsv 2>/dev/null)" == 1 ]]; then
-    az keyvault secret recover --vault-name "$kv" -n app-greeting -o none
-    an_az_retry 12 5 az keyvault secret show --vault-name "$kv" -n app-greeting --query id -o none
-    echo "an-07: recovered the deleted secret app-greeting in $kv"
   else
-    v="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
-    tmp="$(mktemp)"
-    chmod 600 "$tmp"
-    printf '%s' "$v" >"$tmp"
-    # --file keeps the value off the command line (and out of the process list).
-    az keyvault secret set --vault-name "$kv" -n app-greeting --file "$tmp" --encoding utf-8 \
-      --content-type text/plain -o none || {
-      rm -f "$tmp"
+    n="$(an_kv_count secret "$kv" app-greeting list-deleted)" || {
+      echo "an-07: cannot list the deleted secrets of $kv; nothing changed" >&2
       return 1
     }
-    rm -f "$tmp"
-    echo "an-07: the app team stored the secret app-greeting in $kv"
+    if [[ "$n" == 1 ]]; then
+      az keyvault secret recover --vault-name "$kv" -n app-greeting -o none || return 1
+      an_az_retry 12 5 az keyvault secret show --vault-name "$kv" -n app-greeting --query id -o none || return 1
+      echo "an-07: recovered the deleted secret app-greeting in $kv"
+    else
+      v="$(python3 -c 'import secrets; print(secrets.token_hex(16))')" || return 1
+      tmp="$(mktemp)"
+      chmod 600 "$tmp"
+      printf '%s' "$v" >"$tmp"
+      # --file keeps the value off the command line (and out of the process list).
+      if ! az keyvault secret set --vault-name "$kv" -n app-greeting --file "$tmp" --encoding utf-8 \
+        --content-type text/plain -o none; then
+        rm -f "$tmp"
+        return 1
+      fi
+      rm -f "$tmp"
+      echo "an-07: the app team stored the secret app-greeting in $kv"
+    fi
   fi
-  v="$(az keyvault secret show --vault-name "$kv" -n app-greeting --query value -o tsv)"
+  v="$(az keyvault secret show --vault-name "$kv" -n app-greeting --query value -o tsv)" || return 1
   [[ -n "$v" ]] || return 1
   mkdir -p "$LAB_HOME/snapshots"
   (umask 077 && printf '%s\n' "$v" >"$snap")
@@ -310,39 +334,56 @@ EOF
 
 # an_kv_cert_ensure (an-08's prerequisite): you get Key Vault Certificates Officer on the dev vault
 # (the platform team's grant, by az: no Terraform change), and the vault gets the self-signed
-# certificate web-tls. Never recreates an existing certificate. Waits until it is issued.
+# certificate web-tls. Never creates a new version of an existing certificate (that would change
+# the thumbprint): a listing that fails stops here, a soft-deleted certificate is recovered, a
+# pending first version is waited for. Returns 1 on any Azure error.
 an_kv_cert_ensure() {
-  local kv id me pol tp i
+  local kv id me ra pol tp n i
   kv="$(an_kv_name)"
   id="$(az keyvault show -n "$kv" --query id -o tsv)" && [[ -n "$id" ]] || {
     echo "an-08: Key Vault $kv not found: the tf-25 state is missing (./lab.sh resume, or ./lab.sh catchup tf-25)" >&2
     return 1
   }
-  me="$(az ad signed-in-user show --query id -o tsv)"
-  if [[ -z "$(az role assignment list --assignee "$me" --scope "$id" --role "Key Vault Certificates Officer" --query "[0].id" -o tsv)" ]]; then
+  me="$(az ad signed-in-user show --query id -o tsv)" && [[ -n "$me" ]] || return 1
+  ra="$(az role assignment list --assignee "$me" --scope "$id" --role "Key Vault Certificates Officer" --query "[0].id" -o tsv)" || return 1
+  if [[ -z "$ra" ]]; then
     az role assignment create --assignee-object-id "$me" --assignee-principal-type User \
-      --role "Key Vault Certificates Officer" --scope "$id" -o none
+      --role "Key Vault Certificates Officer" --scope "$id" -o none || return 1
     echo "an-08: the platform team granted you Key Vault Certificates Officer on $kv"
   fi
-  # Right after the grant the data plane may still answer 403 for a few minutes: retry.
-  if [[ "$(an_az_retry 20 30 az keyvault certificate list --vault-name "$kv" --query "length([?name=='web-tls'])" -o tsv)" == 1 ]]; then
+  # Pending (not yet issued) certificates count as existing.
+  n="$(an_kv_count certificate "$kv" web-tls list --include-pending true)" || {
+    echo "an-08: cannot list the certificates of $kv; nothing created" >&2
+    return 1
+  }
+  if [[ "$n" == 1 ]]; then
     echo "an-08: certificate web-tls already in $kv (kept)"
   else
-    pol="$(mktemp)"
-    an_kv_cert_policy "$pol"
-    an_az_retry 20 30 az keyvault certificate create --vault-name "$kv" -n web-tls --policy "@$pol" -o none || {
-      rm -f "$pol"
+    n="$(an_kv_count certificate "$kv" web-tls list-deleted)" || {
+      echo "an-08: cannot list the deleted certificates of $kv; nothing created" >&2
       return 1
     }
-    rm -f "$pol"
-    echo "an-08: the platform team created the self-signed certificate web-tls in $kv"
+    if [[ "$n" == 1 ]]; then
+      az keyvault certificate recover --vault-name "$kv" -n web-tls -o none || return 1
+      echo "an-08: recovered the deleted certificate web-tls in $kv"
+    else
+      pol="$(mktemp)"
+      an_kv_cert_policy "$pol"
+      if ! an_az_retry 20 30 az keyvault certificate create --vault-name "$kv" -n web-tls --policy "@$pol" -o none; then
+        rm -f "$pol"
+        return 1
+      fi
+      rm -f "$pol"
+      echo "an-08: the platform team created the self-signed certificate web-tls in $kv"
+    fi
   fi
+  # A new, recovered or pending certificate: wait until it is issued (it has a thumbprint).
   for ((i = 0; i < 30; i++)); do
     tp="$(az keyvault certificate show --vault-name "$kv" -n web-tls --query x509ThumbprintHex -o tsv 2>/dev/null || true)"
     [[ -n "$tp" ]] && return 0
     sleep 5
   done
-  echo "an-08: certificate web-tls in $kv was not issued within 150 s (az keyvault certificate pending show)" >&2
+  echo "an-08: certificate web-tls in $kv was not issued within 150 s (az keyvault certificate pending show --vault-name $kv -n web-tls)" >&2
   return 1
 }
 
@@ -360,14 +401,18 @@ an_task_started() {
 # certificate, each once the task was started or the repo uses it. They live in the dev vault,
 # which ./lab.sh pause destroys and resume recreates empty.
 an_kv_prereqs() {
-  if an_tree_uses app-greeting || an_task_started an-07; then an_kv_secret_ensure; fi
-  if an_tree_uses web-tls || an_task_started an-08; then an_kv_cert_ensure; fi
+  if an_tree_uses app-greeting || an_task_started an-07; then
+    an_kv_secret_ensure || return 1
+  fi
+  if an_tree_uses web-tls || an_task_started an-08; then
+    an_kv_cert_ensure || return 1
+  fi
 }
 
 # an_catchup_converge: (catchup) apply the caught-up tree once: Key Vault prerequisites first
 # (the hooks of an-07/an-08 run after an-03's), then site.yml.
 an_catchup_converge() {
-  an_kv_prereqs
+  an_kv_prereqs || return 1
   an_run ansible-playbook site.yml
 }
 

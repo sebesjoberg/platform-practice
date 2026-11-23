@@ -93,6 +93,6 @@ Commit on a branch, pull request, merge. Before you push:
 
 ## Verify
 
-`./lab.sh grade`. The secret stays in the vault; nothing to clean up. After a pause/resume, run
-`tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory (the new vault is empty), then
-`site.yml`.
+`./lab.sh grade`. The secret stays in the vault; nothing to clean up. `./lab.sh resume` stores a
+new secret in the new, empty vault and re-runs `site.yml`; if it fails there, run
+`tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory, then `site.yml`.

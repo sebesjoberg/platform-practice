@@ -24,10 +24,12 @@ user `azureuser`, your key `~/.ssh/<prefix>_lab`.
   (marks it done, which `next ansible` requires), then `./lab.sh next ansible`.
 
 The VMs cost money every hour: `./lab.sh pause` when you stop, `./lab.sh resume` when you're back.
-Resume brings the VMs back empty; re-run your playbooks (`ansible-playbook site.yml`). From an-07
-on, resume also brings back an empty dev Key Vault: first run `tracks/ansible/lib/keyvault-prereqs.sh`
-from the lab directory (it stores a new `app-greeting` secret and issues a new `web-tls`
-certificate, for the tasks you have started), then `site.yml`.
+Resume brings the VMs back empty and, from an-07 on, an empty dev Key Vault. `./lab.sh resume`
+waits for the Terraform run, restores the vault contents your tasks need (a new `app-greeting`
+secret, your certificate role and a new `web-tls` certificate) and re-runs `site.yml` from
+`ansible/.venv`. If that last part fails (a playbook error, a run that took too long), redo it by
+hand: `tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory, then
+`cd "$LIVE_DIR/ansible" && source .venv/bin/activate && ansible-playbook site.yml`.
 
 ## Conventions
 
@@ -68,5 +70,8 @@ Later tasks and their checks assume these. Keep them in your own code.
   per-environment values (IPs, the environment name, Key Vault values) come from the inventory.
   What a container can't do in Molecule (chrony, systemd mount namespaces) is switched off by a
   documented role variable that only the scenario sets.
-- **One release knob.** `app_version` in the web servers' group variables picks the app release
-  (an-09); deploys and rollbacks change it (`-e app_version=1.1.0`), nothing else.
+- **One release knob, kept in the inventory.** `app_version` in the web servers' group variables
+  (`group_vars/role_web.yml`) picks the app release (an-09) and is the source of truth: a deploy
+  or a rollback is a reviewed change to that line, merged, then applied. `-e app_version=…` is for
+  a one-off experiment only (trying the `broken` release): the next plain `site.yml` run (graders,
+  CI, drift detection) puts the inventory's version back, and reports it as a change.

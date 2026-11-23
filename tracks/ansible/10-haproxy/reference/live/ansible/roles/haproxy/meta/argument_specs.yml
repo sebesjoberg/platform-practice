@@ -25,6 +25,9 @@ argument_specs:
       haproxy_admin_socket:
         type: path
         description: Path of the Runtime API socket (level admin).
+      haproxy_admin_group:
+        type: str
+        description: Group of the Runtime API socket; its members may drain and enable servers.
       haproxy_mount_namespace:
         type: bool
         description: Keep the unit's /dev/log bind mount. False only in unprivileged containers.

@@ -8,7 +8,7 @@ After=network.target
 Type=simple
 User={{ acme_hello_user }}
 Group={{ acme_hello_user }}
-SupplementaryGroups={{ acme_hello_config_group }}
+# Read by systemd as root before it drops privileges: the service user needs no access to the file.
 # Optional (-): without role app_env the app still starts, and its page says app.env missing.
 EnvironmentFile=-{{ acme_hello_env_file }}
 Environment=APP_ENV={{ acme_hello_env }} APP_PORT={{ acme_hello_port }}

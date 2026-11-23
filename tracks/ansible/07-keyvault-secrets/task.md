@@ -35,8 +35,8 @@ nobody pasted anywhere.
 `az keyvault secret show --vault-name kv-{{PREFIX}}-dev-{{SUFFIX}} -n app-greeting --query value -o tsv`
 prints, `git grep` for that value in your repo finds nothing, and `./lab.sh grade` passes.
 
-After `./lab.sh pause` / `resume` the dev vault comes back new and empty: run
-`tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory (next to `lab.sh`) to store a new
-secret, then `site.yml`.
+After `./lab.sh pause` / `resume` the dev vault comes back new and empty. `./lab.sh resume` stores
+a new secret and re-runs `site.yml`; if that fails, run `tracks/ansible/lib/keyvault-prereqs.sh`
+from the lab directory (next to `lab.sh`), then `ansible-playbook site.yml` from `ansible/`.
 
 Target: 20 minutes.

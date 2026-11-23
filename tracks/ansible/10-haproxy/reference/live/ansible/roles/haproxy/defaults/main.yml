@@ -13,8 +13,10 @@ haproxy_backend_port: 80
 # HTTP health check per server; a server that fails it twice leaves the pool.
 haproxy_health_path: /health
 
-# The Runtime API (drain, enable, weights): root and the haproxy group, level admin.
+# The Runtime API (drain, enable, weights) at level admin: root and the members of
+# haproxy_admin_group may use it (mode 660).
 haproxy_admin_socket: /run/haproxy/admin.sock
+haproxy_admin_group: haproxy
 
 # Ubuntu's unit gives HAProxy /dev/log in its chroot through a mount namespace. False only where
 # systemd may not create one (an unprivileged container, Molecule): a drop-in then resets it.

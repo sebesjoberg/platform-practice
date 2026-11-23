@@ -21,9 +21,6 @@ argument_specs:
       acme_hello_env_file:
         type: path
         description: Environment file (role app_env), optional for the unit.
-      acme_hello_config_group:
-        type: str
-        description: Group of the environment file; the service user joins it.
       acme_hello_sandbox:
         type: bool
         description: Mount-namespace sandboxing in the unit. False only in unprivileged containers.
