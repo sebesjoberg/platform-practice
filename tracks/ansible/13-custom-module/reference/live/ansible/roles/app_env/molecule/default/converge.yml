@@ -1,0 +1,28 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # Stubs for what the inventory looks up in Key Vault on the real servers.
+    app_env_vars:
+      APP_GREETING: molecule-stub-not-a-secret
+      APP_MODE: test
+    app_env_settings:
+      log_level: debug
+      features.maintenance_page: false
+  pre_tasks:
+    # The app team's tooling owns other keys of the same file: the role must keep them.
+    - name: Create /etc/acme for the seed file
+      ansible.builtin.file:
+        path: /etc/acme
+        state: directory
+        mode: "0750"
+
+    - name: Seed the settings file with a key the role doesn't own
+      ansible.builtin.copy:
+        dest: /etc/acme/settings.json
+        content: '{"build": "2026.11.1"}'
+        force: false
+        mode: "0640"
+  roles:
+    - role: app_env

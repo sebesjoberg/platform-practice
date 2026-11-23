@@ -1,0 +1,30 @@
+---
+# Molecule scenario for role app_env. No Key Vault here: converge.yml passes a stub value, which is
+# the point of keeping the lookup in the inventory and the role ignorant of it.
+#   cd ansible/roles/app_env && molecule test
+driver:
+  name: docker
+
+platforms:
+  - name: app-env-noble
+    image: ubuntu:24.04
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    command: /lib/systemd/systemd
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..
+    # The repo's own modules (acme_app_setting): ansible/library, as ansible.cfg says.
+    ANSIBLE_LIBRARY: ${MOLECULE_PROJECT_DIRECTORY}/../../library
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../collections:${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}
+
+verifier:
+  name: ansible

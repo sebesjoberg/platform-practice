@@ -1,0 +1,10 @@
+---
+# What differs per environment lives in env_<name>.yml, next to the env_<name> group the inventory
+# builds from the env tag.
+acme_env: dev
+
+# The app's log level in this environment (role app_env writes it into the settings file).
+acme_log_level: debug
+
+# The environment's Key Vault (tf-21). Its name is not a secret; its contents are.
+acme_kv_url: https://kv-{{PREFIX}}-dev-{{SUFFIX}}.vault.azure.net

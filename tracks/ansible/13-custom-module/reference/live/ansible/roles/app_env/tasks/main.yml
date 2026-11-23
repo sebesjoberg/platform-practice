@@ -1,0 +1,38 @@
+---
+- name: Create the application group
+  ansible.builtin.group:
+    name: "{{ app_env_group }}"
+    system: true
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: "{{ app_env_path | dirname }}"
+    state: directory
+    owner: root
+    group: "{{ app_env_group }}"
+    mode: "0750"
+
+# no_log hides the whole result, the --diff output included: `ansible-playbook --check --diff`
+# (CI, drift detection) would otherwise print the old and the new value into the job log.
+- name: Write the environment file
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "{{ app_env_path }}"
+    owner: root
+    group: "{{ app_env_group }}"
+    mode: "0640"
+  no_log: true
+
+# One key at a time, with the repo's own module (an-13): the rest of the file belongs to the app
+# team's tooling, so a template that owns the whole file would fight it.
+- name: Set the application settings that operations owns
+  acme_app_setting:
+    path: "{{ app_env_settings_path }}"
+    key: "{{ item.key }}"
+    value: "{{ item.value }}"
+    owner: root
+    group: "{{ app_env_group }}"
+    mode: "0640"
+  loop: "{{ app_env_settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
