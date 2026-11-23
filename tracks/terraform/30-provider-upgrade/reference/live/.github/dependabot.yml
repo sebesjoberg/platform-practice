@@ -1,0 +1,39 @@
+# Dependabot version updates (tf-30). Each update arrives as a pull request, which the pipeline
+# plans like any other change: nothing reaches Azure before a human merges it.
+#
+# Dependabot PRs run without the repo's Actions secrets. The plan job needs BUDGET_EMAIL and
+# LEARNER_IP, so the same two exist as Dependabot secrets (gh secret set --app dependabot ...).
+version: 2
+updates:
+  # Providers (required_providers and the committed .terraform.lock.hcl) and module refs
+  # (git::https://github.com/...//spoke?ref=vX.Y.Z) in every stack. A new stack needs its line.
+  - package-ecosystem: terraform
+    directories:
+      - "/terraform/bootstrap"
+      - "/terraform/landing-zone"
+      - "/terraform/observability"
+      - "/terraform/shared"
+      - "/terraform/env-dev"
+      - "/terraform/env-prod"
+    schedule:
+      interval: weekly
+      day: monday
+    # Minor and patch updates of all stacks in one PR a week. A major version (azurerm 6, a new
+    # modules major) gets a PR of its own: it needs its upgrade guide or changelog read first.
+    groups:
+      terraform-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "deps(terraform)"
+
+  # The actions the workflows use (actions/checkout, hashicorp/setup-terraform, azure/login, ...).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(actions)"

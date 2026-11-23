@@ -17,11 +17,12 @@ tf16_readme_lists_all() {
     grep -qw -- "$n" <<<"$sect" || return 1
   done
 }
-# tf16_capped_lower_bound <dir>: a provider version constraint with a >= lower bound and a < 5
-# cap, in either order (">= 4.81, < 5.0" or "< 5.0, >= 4.81").
+# tf16_capped_lower_bound <dir>: a provider version constraint with a >= lower bound and a cap
+# below the next major, in either order (">= 4.81, < 5.0" or "< 5.0, >= 4.81"; from tf-30, whose
+# v3.0.0 moves to azurerm 5.x, ">= 5.14, < 6.0").
 tf16_capped_lower_bound() {
   grep -hE '^[[:space:]]+version[[:space:]]*=[[:space:]]*"' "$1"/*.tf |
-    grep -E '>=[[:space:]]*[0-9]' | grep -qE '<[[:space:]]*5(\.0)*[[:space:]]*(,|")'
+    grep -E '>=[[:space:]]*[0-9]' | grep -qE '<[[:space:]]*[56](\.0)*[[:space:]]*(,|")'
 }
 export -f spoke_module_dir tf_blocks_missing tf_block tf16_names tf16_readme_lists_all tf16_capped_lower_bound
 
@@ -37,9 +38,9 @@ check_code "env and the address space input are validated" \
   'd="$(spoke_module_dir)" && tf_block "$d" variable env | grep -qE "^[[:space:]]+validation[[:space:]]*\{" && { tf_block "$d" variable address_space; tf_block "$d" variable vnet_cidr; } | grep -qE "^[[:space:]]+validation[[:space:]]*\{"' \
   "add validation blocks to variable \"env\" (dev or prod) and variable \"address_space\" (a /16 CIDR block)"
 
-check_code "the module states lower bounds (>=) for Terraform and azurerm (capped below 5.0), no ~>" \
+check_code "the module states lower bounds (>=) for Terraform and azurerm (capped below the next major), no ~>" \
   'd="$(spoke_module_dir)" && grep -qsE "required_version[[:space:]]*=[[:space:]]*\">=" "$d"/*.tf && tf16_capped_lower_bound "$d" && ! grep -qsE "^[[:space:]]*(required_version|version)[[:space:]]*=.*~>" "$d"/*.tf' \
-  "in the module: required_version = \">= 1.17\" and azurerm version = \">= 4.81, < 5.0\" (a lower bound, capped below the next major); the stacks keep their ~> pins"
+  "in the module: required_version = \">= 1.17\" and azurerm version = \">= 4.81, < 5.0\" (\">= 5.14, < 6.0\" from tf-30; a lower bound, capped below the next major); the stacks keep their ~> pins"
 
 check_code "the module README has a terraform-docs section listing every input and output" \
   'tf16_readme_lists_all "$(spoke_module_dir)"' \
