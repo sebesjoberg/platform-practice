@@ -77,6 +77,9 @@ cmd_nuke() {
   [[ "$active" == "${SUBSCRIPTION_ID:-}" ]] ||
     die 4 "az is on subscription ${active:-<none>}, lab is $SUBSCRIPTION_ID — az account set -s $SUBSCRIPTION_ID"
 
+  # landing-zone requires var.budget_email from tf-12 on (CI sets it from the BUDGET_EMAIL repo
+  # variable). Destroy never sends it anywhere, so any valid address will do.
+  export TF_VAR_budget_email="${TF_VAR_budget_email:-nuke@example.invalid}"
   for stack in "${NUKE_ORDER[@]}"; do
     [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
     echo "nuke: destroying $stack"

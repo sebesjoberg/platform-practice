@@ -21,7 +21,7 @@ source "$REPO/lib/tasks.sh"
 # or {S} / {{SUFFIX}}), @E@ = environment (dev|prod|{env}), @V@ = vnet short name.
 # ---------------------------------------------------------------------------------------
 NAMING_PATTERNS=(
-  '^rg-@P@-(tfstate|hub|@E@|shared|legacy|payments)$'
+  '^rg-@P@-(tfstate|hub|@E@|shared|legacy|payments|policytest)$'
   '^st@P@(tfstate|legacy)@S@$'
   '^id-@P@-(github-ci|app-@E@|payments-ci)$'
   '^vnet-@P@-@V@$'

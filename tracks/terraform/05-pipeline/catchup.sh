@@ -11,6 +11,13 @@ gh variable set AZURE_CLIENT_ID -R "$repo" --body "$client_id"
 gh variable set AZURE_TENANT_ID -R "$repo" --body "$TENANT_ID"
 gh variable set AZURE_SUBSCRIPTION_ID -R "$repo" --body "$SUBSCRIPTION_ID"
 
+# The run below applies the tree catchup just pushed, which may be a later task's reference.
+# From tf-12 on the workflow also needs the repo variable BUDGET_EMAIL, and tf-12's hook runs
+# after this one, so set it now (tf-12's catchup.sh is the single place that knows how).
+if grep -qs 'vars\.BUDGET_EMAIL' .github/workflows/terraform.yml; then
+  bash "$(dirname "${BASH_SOURCE[0]}")/../12-budget/catchup.sh"
+fi
+
 runs() { gh run list -R "$repo" --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId'; }
 
 for attempt in 1 2 3; do
