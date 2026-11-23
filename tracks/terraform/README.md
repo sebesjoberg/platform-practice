@@ -20,10 +20,13 @@ and `./lab.sh init`.
 
 Later tasks and their checks assume these. Keep them in your own code.
 
-- **Version pins in every stack and module.** `required_version = "~> 1.17"` and
-  `hashicorp/azurerm` `version = "~> 4.81"` (the latest 4.x minor on 2026-11-23). The lab
-  stays on azurerm 4.x. Lock files (`.terraform.lock.hcl`) are committed from tf-30; the
-  reference leaves them out before that.
+- **Version pins in every stack and module.** Stacks: `required_version = "~> 1.17"` and
+  `hashicorp/azurerm` `version = "~> 4.81"` (the latest 4.x minor on 2026-11-23). Modules
+  (from tf-16) state the range they work with instead: `required_version = ">= 1.17"` and
+  azurerm `version = ">= 4.81, < 5.0"`; the calling stack's pin decides what runs. The lab
+  stays on azurerm 4.x (5.x exists and breaks the lab's code). Stacks commit lock files
+  (`.terraform.lock.hcl`) from tf-30, and the reference leaves them out before that; modules
+  never do.
 - **Subscription ID in the provider block.** azurerm 4.x needs a subscription ID. Every stack
   sets it explicitly:
 
@@ -47,7 +50,15 @@ Later tasks and their checks assume these. Keep them in your own code.
   `apply` job; the workflow has exactly these two jobs. Stacks run in the order of
   `STACK_ORDER` in `.github/workflows/terraform.yml` (`landing-zone shared env-dev env-prod
   observability teams/payments`), then any others alphabetically. `bootstrap` is applied locally only:
-  CI never manages its own identity.
+  CI never manages its own identity. Nothing under `terraform/modules/` is ever a stack (tf-15).
+- **Modules.** The `spoke` module lives in `terraform/modules/spoke` from tf-15, and from tf-19
+  in your public modules repo `<prefix>-terraform-modules` (directory `spoke/`, cloned to
+  `MODULES_DIR`). Stacks call it as `module "spoke"`, so state addresses stay `module.spoke.*`
+  wherever the code lives, and pin a release:
+  `git::https://github.com/<owner>/<prefix>-terraform-modules.git//spoke?ref=vX.Y.Z`. Released
+  tags never move; a breaking change is a new major version with a `CHANGELOG.md` entry (tf-20).
+  Module tests (`terraform test`, mock providers only) run in the plan job until tf-19, then in
+  the modules repo's CI.
 - **Tags on every resource group.** `owner = "<your owner tag>"`, `env`, `managed_by =
   "terraform"`. The `env` values are `platform` (bootstrap: state and CI identity), `hub`
   (landing-zone hub and shared services), `dev` and `prod`.
