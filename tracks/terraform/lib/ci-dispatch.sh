@@ -28,8 +28,22 @@ ci_approve_pending() {
   done
 }
 
+# ci_approve_waiting <repo>: approve the pending deployments of every terraform.yml run on main
+# that waits for a review. Catchup's own push to main starts a run whose apply-prod job waits in
+# the concurrency group terraform-apply-prod; left alone, it would hold up the apply-prod job of
+# the run catchup dispatches, which then never finishes. Catchup was confirmed by the learner,
+# who is the reviewer, and every such run applies the tree catchup pushed, so approving is the
+# simplest correct option (cancelling would also work, but leaves red runs on main).
+ci_approve_waiting() {
+  local r
+  for r in $(gh run list -R "$1" --workflow terraform.yml --branch main --status waiting --json databaseId --jq '.[].databaseId'); do
+    ci_approve_pending "$1" "$r" || true
+  done
+}
+
 # ci_wait_run <repo> <run id>: wait until the run completes (at most 90 minutes), approving
-# pending deployments on the way. 0 = success.
+# pending deployments on the way: its own and those of any other waiting run on main, which could
+# block it through the concurrency group. 0 = success.
 ci_wait_run() {
   local repo=$1 id=$2 state deadline=$((SECONDS + 5400))
   while ((SECONDS < deadline)); do
@@ -39,6 +53,7 @@ ci_wait_run() {
       completed*) return 1 ;;
       waiting*) ci_approve_pending "$repo" "$id" || true ;;
     esac
+    ci_approve_waiting "$repo" || true
     sleep "${CI_POLL_SECONDS:-15}"
   done
   echo "run $id did not finish within 90 minutes" >&2
@@ -51,6 +66,7 @@ ci_wait_run() {
 ci_dispatch_wait() {
   local repo=$1 stacks=$2 tag=$3 attempt known id
   for attempt in 1 2 3; do
+    ci_approve_waiting "$repo" || true
     known=" $(gh run list -R "$repo" --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId' | tr '\n' ' ') "
     gh workflow run terraform.yml -R "$repo" --ref main -f stacks="$stacks"
     id=""

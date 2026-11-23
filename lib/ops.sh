@@ -17,10 +17,6 @@ tf_stack() {
 # (the provider parses it) whose private half was deleted. Nothing ever logs in with it.
 LAB_PLACEHOLDER_SSH_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGbG5bSUW5X3XwP7w2zy2uRxzooFWF1cNkhrNJ3menoy lab-destroy-placeholder"
 
-# Description of the platform owner's Key Vault Secrets Officer assignment (tf-21, bootstrap's
-# platform-owner.tf); nuke deletes the assignment by it.
-LAB_OWNER_KV_DESCRIPTION="Platform owner: break-glass access to Key Vault secrets (tf-21)."
-
 # lab_destroy_vars: values for the stack variables without defaults, which CI sets from repo
 # variables (TF_VAR_*). A local destroy needs every variable but never sends these anywhere:
 # landing-zone's budget_email (tf-12), shared's learner_ip and shared/env-dev's ssh_public_key
@@ -125,7 +121,7 @@ cmd_nuke() {
     die 4 "az is on subscription ${active:-<none>}, lab is $SUBSCRIPTION_ID — az account set -s $SUBSCRIPTION_ID"
 
   # landing-zone requires var.budget_email from tf-12 on, shared and env-dev learner_ip and
-  # ssh_public_key from tf-25 (CI sets them from repo variables). Destroy never sends them
+  # ssh_public_key from tf-25 (CI sets them from repo secrets and variables). Destroy never sends them
   # anywhere, so any valid value will do.
   lab_destroy_vars
   for stack in "${NUKE_ORDER[@]}"; do
@@ -137,11 +133,15 @@ cmd_nuke() {
   if pid="$(az identity show -g "$rg" -n "id-$PREFIX-github-ci" --query principalId -o tsv </dev/null 2>/dev/null | tr -d '\r')" && [[ -n "$pid" ]]; then
     az role assignment delete --assignee "$pid" --yes </dev/null || die 1 "could not delete role assignments of $pid"
   fi
-  # tf-21's bootstrap gave you Key Vault Secrets Officer on the subscription. It goes with the lab;
-  # matched by its description, so a role you held before the lab stays.
-  local kv_ids
-  kv_ids="$(az role assignment list --scope "/subscriptions/$SUBSCRIPTION_ID" --role "Key Vault Secrets Officer" \
-    --query "[?description=='$LAB_OWNER_KV_DESCRIPTION'].id" -o tsv </dev/null 2>/dev/null | tr -d '\r')" || kv_ids=""
+  # tf-21's bootstrap gave you Key Vault Secrets Officer on the subscription. It goes with the lab:
+  # matched by principal (you, the signed-in user), role and exact scope, since your own code may
+  # not set the reference's description. A service principal login has no signed-in user: skip.
+  local me kv_ids=""
+  me="$(az ad signed-in-user show --query id -o tsv </dev/null 2>/dev/null | tr -d '\r')" || me=""
+  if [[ -n "$me" ]]; then
+    kv_ids="$(az role assignment list --assignee "$me" --scope "/subscriptions/$SUBSCRIPTION_ID" --role "Key Vault Secrets Officer" \
+      --query "[?scope=='/subscriptions/$SUBSCRIPTION_ID'].id" -o tsv </dev/null 2>/dev/null | tr -d '\r')" || kv_ids=""
+  fi
   if [[ -n "$kv_ids" ]]; then
     # shellcheck disable=SC2086 # one ID per word
     az role assignment delete --ids $kv_ids --yes </dev/null || die 1 "could not delete your Key Vault Secrets Officer assignment"

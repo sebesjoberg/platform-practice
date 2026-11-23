@@ -101,6 +101,19 @@ _selftest_offline() {
   echo "selftest offline: $count task(s) ok"
 }
 
+# _selftest_clean_trees <dir>...: discard uncommitted changes and untracked files in each dir that
+# is a git repo (reset --hard, clean -fd; ignored files stay). setup.sh starters (tf-05, tf-19,
+# tf-21, tf-25, ...) may write files, and catchup rightly refuses a dirty tree. Only the live
+# selftest does this: it runs on throwaway-prefix repos. A learner's catchup keeps refusing.
+_selftest_clean_trees() {
+  local d
+  for d in "$@"; do
+    [[ -n "$d" && -d "$d/.git" ]] || continue
+    git -C "$d" reset -q --hard
+    git -C "$d" clean -q -fd
+  done
+}
+
 _selftest_live() {
   local track=$1 from=$2 to=$3 id d rc
   [[ "${SELFTEST_I_HAVE_PERMISSION:-}" == 1 ]] ||
@@ -118,6 +131,7 @@ _selftest_live() {
     grade_quiet "$id" || rc=$?
     [[ $rc -eq 1 ]] || die 1 "selftest: $id: grade before catchup should fail (status $rc)"
     echo "== $id: fails before (ok), catchup"
+    _selftest_clean_trees "${LIVE_DIR:-}" "${MODULES_DIR:-}"
     _catchup "$id" 1
     GRADE_TMP="$(mktemp -d)"
     if ! grade_task "$id" normal; then

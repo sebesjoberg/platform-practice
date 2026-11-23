@@ -119,6 +119,12 @@ ansible-playbook -i inventory site.yml"
   : >"$LAB_HOME/paused"
   fake_response az "identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv" 0 "pid-123"
   fake_response az "role assignment delete --assignee pid-123 --yes" 0
+  # the learner's own Key Vault Secrets Officer on the subscription (tf-21), found by principal,
+  # role and exact scope
+  fake_response az "ad signed-in-user show --query id -o tsv" 0 "uid-me"
+  fake_response az "role assignment list --assignee uid-me --scope /subscriptions/00000000-0000-0000-0000-000000000000 --role Key Vault Secrets Officer --query [?scope=='/subscriptions/00000000-0000-0000-0000-000000000000'].id -o tsv" 0 \
+    "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleAssignments/ra-1"
+  fake_response az "role assignment delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleAssignments/ra-1 --yes" 0
   fake_response az "group delete -n rg-acme-tfstate --yes" 0
   fake_response gh "repo delete learner/acme-platform --yes" 0
   run "$LAB" nuke <<<$'acme\nnuke\ny\nn'
@@ -132,7 +138,9 @@ terraform -chdir=$LIVE/terraform/landing-zone init -input=false
 terraform -chdir=$LIVE/terraform/landing-zone destroy -auto-approve -input=false
 az identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv
 az role assignment delete --assignee pid-123 --yes
-az role assignment list --scope /subscriptions/00000000-0000-0000-0000-000000000000 --role Key Vault Secrets Officer --query [?description=='Platform owner: break-glass access to Key Vault secrets (tf-21).'].id -o tsv
+az ad signed-in-user show --query id -o tsv
+az role assignment list --assignee uid-me --scope /subscriptions/00000000-0000-0000-0000-000000000000 --role Key Vault Secrets Officer --query [?scope=='/subscriptions/00000000-0000-0000-0000-000000000000'].id -o tsv
+az role assignment delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleAssignments/ra-1 --yes
 az group delete -n rg-acme-tfstate --yes
 gh repo delete learner/acme-platform --yes"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]

@@ -423,3 +423,31 @@ vr_release_fixture() {
   [[ "$output" == *"lib: shellcheck: helper.sh"* ]]
   [[ "$output" != *"missing task.md"* ]]
 }
+
+@test "live selftest cleans repo working trees before catchup, and leaves other dirs alone" {
+  source "$REPO_ROOT/lib/common.sh"
+  source "$REPO_ROOT/lib/selftest.sh"
+  repo="$TEST_TMP/repo" plain="$TEST_TMP/plain"
+  mkdir -p "$repo" "$plain"
+  git -C "$repo" init -q
+  printf 'ignored.txt\n' >"$repo/.gitignore"
+  echo one >"$repo/tracked.txt"
+  git -C "$repo" add -A
+  git -C "$repo" -c user.name=t -c user.email=t@localhost commit -q -m init
+  echo changed >"$repo/tracked.txt"
+  mkdir -p "$repo/app-env"
+  echo starter >"$repo/app-env/variables.tf"
+  echo keep >"$repo/ignored.txt"
+  echo untouched >"$plain/file.txt"
+  _selftest_clean_trees "$repo" "$plain" ""
+  [ -z "$(git -C "$repo" status --porcelain)" ]
+  [ "$(cat "$repo/tracked.txt")" = one ]
+  [ ! -e "$repo/app-env" ]
+  [ -f "$repo/ignored.txt" ]
+  [ "$(cat "$plain/file.txt")" = untouched ]
+}
+
+@test "live selftest calls the tree cleanup right before each catchup" {
+  run grep -B1 '_catchup "$id" 1' "$REPO_ROOT/lib/selftest.sh"
+  [[ "$output" == *'_selftest_clean_trees "${LIVE_DIR:-}" "${MODULES_DIR:-}"'* ]]
+}
