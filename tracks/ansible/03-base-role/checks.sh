@@ -22,19 +22,20 @@ an03_site_applies_base() {
   local f=$1
   [[ -f "$f" ]] || return 1
   grep -qE "hosts:[[:space:]]*.?all.?[[:space:]]*$" "$f" || return 1
-  grep -qE "^[[:space:]]*-[[:space:]]*.?base.?[[:space:]]*$|role:[[:space:]]*.?base([^[:alnum:]_.-]|$)|roles:[[:space:]]*\[([^]]*[[:space:],])?.?base.?([[:space:],]|\])" "$f" && return 0
-  grep -qE "(import|include)_role:" "$f" && grep -qE "^[[:space:]]*name:[[:space:]]*.?base.?[[:space:]]*$" "$f"
+  local b="([a-z0-9_]+\.[a-z0-9_]+\.)?base" # base, or acme.platform.base from an-14
+  grep -qE "^[[:space:]]*-[[:space:]]*.?$b.?[[:space:]]*$|role:[[:space:]]*.?$b([^[:alnum:]_.-]|$)|roles:[[:space:]]*\[([^]]*[[:space:],])?.?$b.?([[:space:],]|\])" "$f" && return 0
+  grep -qE "(import|include)_role:" "$f" && grep -qE "^[[:space:]]*name:[[:space:]]*.?$b.?[[:space:]]*$" "$f"
 }
 export -f an03_sshd_hardened an03_ops_user an03_updates_time an03_site_applies_base
 
 # The values themselves are proven live by sshd -T below, so any template style passes here
 # (literal lines or a data-driven loop over a dict of options).
 check_code "role base hardens sshd with a drop-in in sshd_config.d, validated by sshd -t, reloaded by a handler" \
-  'r=ansible/roles/base && grep -rqE "/etc/ssh/sshd_config\.d/[^[:space:]\"]+\.conf" "$r/tasks" && grep -rqE "validate:[[:space:]]*.?(/usr/sbin/)?sshd -t -f %s" "$r/tasks" && grep -rqE "notify:" "$r/tasks" && compgen -G "$r/handlers/main.y*ml" >/dev/null' \
+  'r="$(an_role_dir base)" && [[ -n "$r" ]] && grep -rqE "/etc/ssh/sshd_config\.d/[^[:space:]\"]+\.conf" "$r/tasks" && grep -rqE "validate:[[:space:]]*.?(/usr/sbin/)?sshd -t -f %s" "$r/tasks" && grep -rqE "notify:" "$r/tasks" && compgen -G "$r/handlers/main.y*ml" >/dev/null' \
   "ansible/roles/base: a template/copy task writing /etc/ssh/sshd_config.d/<name>.conf with validate: /usr/sbin/sshd -t -f %s and notify, plus the handler in roles/base/handlers/main.yml"
 
 check_code "role base: ops user from base_ops_user, unattended-upgrades, chrony, timezone" \
-  'r=ansible/roles/base && grep -qsE "^base_ops_user:[[:space:]]*.?ops.?[[:space:]]*$" "$r"/defaults/main.y*ml && grep -rqE "unattended-upgrades" "$r" && grep -rqE "chrony" "$r" && grep -rqE "timezone" "$r/tasks"' \
+  'r="$(an_role_dir base)" && [[ -n "$r" ]] && grep -qsE "^base_ops_user:[[:space:]]*.?ops.?[[:space:]]*$" "$r"/defaults/main.y*ml && grep -rqE "unattended-upgrades" "$r" && grep -rqE "chrony" "$r" && grep -rqE "timezone" "$r/tasks"' \
   "ansible/roles/base needs the default base_ops_user: ops, and tasks for the ops user, unattended-upgrades, chrony and the timezone"
 
 check_code "ansible/site.yml applies role base to all hosts" \

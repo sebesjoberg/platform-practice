@@ -14,18 +14,16 @@ an09_health_ok() {
 }
 export -f an09_health_ok
 
-AN09_R=ansible/roles/acme_hello
-export AN09_R
 
 # an09_role_grep <grep -E args...>: grep -rqsE over the whole role except its Molecule scenario,
 # so a unit in templates/ or files/ or written inline (copy: content:) in tasks/ all count.
 an09_role_grep() {
-  grep -rqsE --exclude-dir=molecule "$@" "$AN09_R"
+  grep -rqsE --exclude-dir=molecule "$@" "$(an_role_dir acme_hello)"
 }
 export -f an09_role_grep
 
 check_code "role acme_hello ships the app (Python, http.server) in its files/" \
-  '[[ -n "$(grep -rlsE --include="*.py" "http\.server" "$AN09_R/files")" ]]' \
+  'r="$(an_role_dir acme_hello)" && [[ -n "$r" && -n "$(grep -rlsE --include="*.py" "http\.server" "$r/files")" ]]' \
   "copy the releases from ~/.platform-lab/starter/an-09/releases into ansible/roles/acme_hello/files/releases/<version>/"
 
 check_code "the role installs acme-hello.service with its own user and hardening directives" \

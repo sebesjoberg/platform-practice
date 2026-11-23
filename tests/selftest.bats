@@ -292,6 +292,40 @@ ansible_fixture() {
   grep -q 'ansible-playbook .*collections=.*platform-practice/collections' "$SHIM_LOG"
 }
 
+# an_collection_fixture <galaxy version> <pinned tag>: the reference holds the live repo's own
+# collection (an-14) and requirements.yml pins it from git; the galaxy shim also logs the
+# requirements file it is given.
+an_collection_fixture() {
+  ansible_fixture
+  local c="$AN/collections_src/ansible_collections/acme/platform"
+  mkdir -p "$c"
+  printf 'namespace: acme\nname: platform\nversion: %s\n' "$1" >"$c/galaxy.yml"
+  printf 'collections:\n  - name: ansible.posix\n    version: 2.2.2\n  # the repo'"'"'s own\n  - name: https://github.com/learner/acme-platform.git#/ansible/collections_src/ansible_collections/acme/platform\n    type: git\n    version: %s\n' "$2" >"$AN/collections/requirements.yml"
+  # shellcheck disable=SC2016
+  printf '#!/usr/bin/env bash\necho "ansible-galaxy $* [collections=${ANSIBLE_COLLECTIONS_PATH:-}]" >>"$SHIM_LOG"\nfor a; do if [[ -f "$a" && "$a" == *.yml ]]; then sed "s/^/  req: /" "$a" >>"$SHIM_LOG"; fi; done\n' >"$VALIDATE_SHIM_DIR/ansible-galaxy"
+}
+
+@test "validate-reference installs the live repo's own git collection from the reference tree" {
+  an_collection_fixture 1.2.3 acme.platform-1.2.3
+  run "$VALIDATE" an-01 --no-molecule
+  [ "$status" -eq 0 ]
+  # Galaxy gets the rest of requirements.yml, without the git entry ...
+  grep -q 'ansible-galaxy collection install -r .*requirements-galaxy.yml -p .*platform-practice/collections' "$SHIM_LOG"
+  grep -q '  req: .*ansible.posix' "$SHIM_LOG"
+  ! grep -q 'github.com' "$SHIM_LOG"
+  # ... and the collection comes from the reference tree, first on the collections path.
+  grep -q 'ansible-galaxy collection install --no-deps --force -p .*collections-live .*live/ansible/collections_src/ansible_collections/acme/platform' "$SHIM_LOG"
+  grep -q 'ansible-lint --offline .*collections=.*collections-live:.*platform-practice/collections' "$SHIM_LOG"
+  grep -q 'ansible-playbook --syntax-check .*collections=.*collections-live:' "$SHIM_LOG"
+}
+
+@test "validate-reference fails when the pinned collection tag is not the reference collection's version" {
+  an_collection_fixture 1.0.0 acme.platform-1.2.3
+  run "$VALIDATE" an-01 --no-molecule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pins acme.platform-1.2.3, but the reference collection"*"is version 1.0.0"* ]]
+}
+
 @test "validate-reference rejects terraform tests without mock_provider" {
   vr_setup
   command -v tflint >/dev/null || skip "tflint not on PATH"

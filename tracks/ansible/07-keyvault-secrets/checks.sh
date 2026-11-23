@@ -13,9 +13,9 @@ an07_lookup_files() {
 # does).
 an07_no_log_role() {
   local r
-  for r in ansible/roles/*/; do
+  while IFS= read -r r; do
     grep -rqsF --exclude-dir=molecule "app.env" "$r" && grep -rqsE "no_log:[[:space:]]*.?true" "$r/tasks" && return 0
-  done
+  done < <(an_role_dirs)
   local f
   while IFS= read -r f; do
     grep -qF "app.env" "$f" && grep -qE "no_log:[[:space:]]*.?true" "$f" && return 0

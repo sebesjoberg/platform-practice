@@ -5,11 +5,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/ansible.sh"
 
 # an05_molecule_test: molecule test for role base, from the role directory with the venv active.
 an05_molecule_test() {
-  [[ -f ansible/.venv/bin/activate ]] || return 3
+  local venv="$PWD/ansible/.venv" d
+  [[ -f "$venv/bin/activate" ]] || return 3
+  d="$(an_role_dir base)" && [[ -n "$d" ]] || return 1
   (
-    cd ansible/roles/base || exit 1
+    cd "$d" || exit 1
     # shellcheck disable=SC1091
-    source ../../.venv/bin/activate
+    source "$venv/bin/activate"
     export ANSIBLE_NOCOLOR=1 ANSIBLE_FORCE_COLOR=0 PY_COLORS=0
     molecule test
   )
@@ -17,11 +19,11 @@ an05_molecule_test() {
 export -f an05_molecule_test
 
 check_code "roles/base/molecule/default: docker driver, converge, idempotence and the ansible verifier kept" \
-  'd=ansible/roles/base/molecule/default && f=$d/molecule.yml && grep -qE "^driver:" "$f" && grep -qE "^[[:space:]]+name:[[:space:]]*.?docker.?[[:space:]]*$" "$f" && compgen -G "$d/converge.y*ml" >/dev/null && ! grep -qE "^[[:space:]]+name:[[:space:]]*.?testinfra" "$f" && { ! grep -qE "^[[:space:]]*test_sequence:" "$f" || { grep -qE "^[[:space:]]*-[[:space:]]*idempotence" "$f" && grep -qE "^[[:space:]]*-[[:space:]]*verify" "$f"; }; }' \
+  'd="$(an_role_dir base)/molecule/default" && f=$d/molecule.yml && grep -qE "^driver:" "$f" && grep -qE "^[[:space:]]+name:[[:space:]]*.?docker.?[[:space:]]*$" "$f" && compgen -G "$d/converge.y*ml" >/dev/null && ! grep -qE "^[[:space:]]+name:[[:space:]]*.?testinfra" "$f" && { ! grep -qE "^[[:space:]]*test_sequence:" "$f" || { grep -qE "^[[:space:]]*-[[:space:]]*idempotence" "$f" && grep -qE "^[[:space:]]*-[[:space:]]*verify" "$f"; }; }' \
   "create ansible/roles/base/molecule/default with molecule.yml (driver: name: docker, verifier: ansible) and converge.yml; a custom test_sequence must keep idempotence and verify"
 
 check_code "verify.yml asserts the sshd drop-in and the packages" \
-  'v="$(ls ansible/roles/base/molecule/default/verify.y*ml 2>/dev/null | head -n1)" && [[ -n "$v" ]] && grep -qE "assert" "$v" && grep -qE "sshd_config\.d|sshd -T" "$v" && grep -qE "package_facts|dpkg|apt list|packages" "$v"' \
+  'v="$(an_first_file "$(an_role_dir base)"/molecule/default/verify.y*ml)" && [[ -n "$v" ]] && grep -qE "assert" "$v" && grep -qE "sshd_config\.d|sshd -T" "$v" && grep -qE "package_facts|dpkg|apt list|packages" "$v"' \
   "write ansible/roles/base/molecule/default/verify.yml: assertions (ansible.builtin.assert) on the sshd drop-in's content and on the installed packages"
 
 check_code "community.docker and Molecule are pinned" \

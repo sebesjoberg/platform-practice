@@ -1,0 +1,7 @@
+# Releases of the collection acme.platform in the learner's live repo, and the task whose
+# reference holds each one.
+#   <tag> <task id>
+# Read by tracks/ansible/lib/collection-tag.sh (catchup creates these tags). A task that releases
+# a new collection version adds its line here.
+acme.platform-1.0.0 an-14
+acme.platform-1.1.0 an-15

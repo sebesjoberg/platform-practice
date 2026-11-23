@@ -21,11 +21,11 @@ check_code "the certificate web-tls is read with the azure.azcollection.azure_ke
   "look up the certificate's secret: lookup('azure.azcollection.azure_keyvault_secret', 'web-tls', vault_url=...): a Key Vault certificate's key and certificate are in the secret of the same name"
 
 check_code "the nginx template listens on 443 with ssl" \
-  'grep -rqE "listen[[:space:]]+([^;]*:)?443[[:space:]]+[^;]*ssl" ansible/roles/nginx/templates' \
+  'grep -rqE "listen[[:space:]]+([^;]*:)?443[[:space:]]+[^;]*ssl" "$(an_role_dir nginx)/templates"' \
   "add listen 443 ssl (with ssl_certificate and ssl_certificate_key) to the server in roles/nginx/templates, keeping listen 80"
 
 check_code "role nginx writes the private key without group/other permissions (0600, 0400, u=rw,go=) and with no_log" \
-  't=ansible/roles/nginx/tasks && grep -rqE "mode:[[:space:]]*.?(0?[0-7]00|u=[rwx]*,(go|og)=|u=[rwx]*,g=,o=|u=[rwx]*,o=,g=).?[[:space:]]*$" "$t" && grep -rqE "no_log:[[:space:]]*.?true" "$t"' \
+  't="$(an_role_dir nginx)/tasks" && grep -rqE "mode:[[:space:]]*.?(0?[0-7]00|u=[rwx]*,(go|og)=|u=[rwx]*,g=,o=|u=[rwx]*,o=,g=).?[[:space:]]*$" "$t" && grep -rqE "no_log:[[:space:]]*.?true" "$t"' \
   "in roles/nginx/tasks: write the key with a mode without group/other bits (\"0600\", \"0400\", u=rw,go=), owner root, and no_log: true; the certificate can be 0644"
 
 an08_timeout="${GRADE_TIMEOUT:-}"

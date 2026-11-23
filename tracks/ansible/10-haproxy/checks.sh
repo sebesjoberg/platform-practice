@@ -8,19 +8,20 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/ansible.sh"
 # line in role haproxy's templates with an IPv4 literal, and no IPv4 literal in role haproxy's
 # defaults/vars or the jump host's variables other than 0.0.0.0 and 127.x (bind addresses).
 an10_backends_dynamic() {
-  local ips
+  local ips r
+  r="$(an_role_dir haproxy)" || r=ansible/roles/haproxy
   grep -rqsE --exclude-dir=.venv --exclude-dir=collections --exclude-dir=.ansible --exclude-dir=molecule \
     "groups\[.?role_web.?\]|groups\.role_web" ansible || return 1
   ! grep -rqsE "^[[:space:]]*server[[:space:]]+[^[:space:]]+[[:space:]]+([0-9]{1,3}\.){3}[0-9]{1,3}" \
-    ansible/roles/haproxy/templates ansible/roles/haproxy/files || return 1
-  ips="$(grep -rhosE "([0-9]{1,3}\.){3}[0-9]{1,3}" ansible/roles/haproxy/defaults ansible/roles/haproxy/vars \
+    "$r/templates" "$r/files" || return 1
+  ips="$(grep -rhosE "([0-9]{1,3}\.){3}[0-9]{1,3}" "$r/defaults" "$r/vars" \
     ansible/inventory/group_vars/role_jump* ansible/inventory/group_vars/env_hub* ansible/inventory/host_vars 2>/dev/null || true)"
   [[ -z "$ips" ]] || ! grep -vqE "^(0\.0\.0\.0|127\.[0-9.]+)$" <<<"$ips"
 }
 export -f an10_backends_dynamic
 
 check_code "role haproxy: config validated with haproxy -c, a backend web, the admin socket at level admin" \
-  'r=ansible/roles/haproxy && grep -rqE "validate:[^#]*haproxy[^#]*[[:space:]]-c" "$r/tasks" && grep -rqsF "/run/haproxy/admin.sock" "$r" && grep -rqE "stats[[:space:]]+socket[^#]*level[[:space:]]+admin" "$r/templates" && grep -rqsE "backend[[:space:]]+web([[:space:]]|$)|_backend_name:[[:space:]]*.?web.?[[:space:]]*$" "$r/templates" "$r/defaults"' \
+  'r="$(an_role_dir haproxy)" && [[ -n "$r" ]] && grep -rqE "validate:[^#]*haproxy[^#]*[[:space:]]-c" "$r/tasks" && grep -rqsF "/run/haproxy/admin.sock" "$r" && grep -rqE "stats[[:space:]]+socket[^#]*level[[:space:]]+admin" "$r/templates" && grep -rqsE "backend[[:space:]]+web([[:space:]]|$)|_backend_name:[[:space:]]*.?web.?[[:space:]]*$" "$r/templates" "$r/defaults"' \
   "ansible/roles/haproxy: template /etc/haproxy/haproxy.cfg with validate: /usr/sbin/haproxy -c -f %s, a backend named web, and stats socket /run/haproxy/admin.sock mode 660 group haproxy level admin"
 
 check_code "a play for role_jump applies role haproxy" \

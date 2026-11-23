@@ -185,6 +185,38 @@ is_playbook() {
   ' "$1"
 }
 
+# split_requirements <requirements.yml> <galaxy out> <live out>: copy <requirements.yml> to
+# <galaxy out> without the collection items whose name is a git URL of the live repo
+# (github.com/<GH_OWNER>/<LIVE_REPO>.git#/<path>); write "<path> <version>" for each of those to
+# <live out>. Items are the "- " entries under collections:, block style.
+split_requirements() {
+  awk -v repo="github.com/$GH_OWNER/$LIVE_REPO" -v live="$3" '
+    function flush(   path, ver, line, n, i, lines) {
+      if (buf == "") return
+      if (index(buf, repo ".git#/") || index(buf, repo "#/")) {
+        n = split(buf, lines, "\n")
+        for (i = 1; i <= n; i++) {
+          line = lines[i]
+          if (line ~ /name:/ && match(line, /#\/[^"\047[:space:]]+/)) path = substr(line, RSTART + 2, RLENGTH - 2)
+          if (line ~ /version:/) { ver = line; sub(/^[^:]*:[[:space:]]*/, "", ver); gsub(/["\047]/, "", ver); sub(/[[:space:]]*(#.*)?$/, "", ver) }
+        }
+        sub(/\/$/, "", path)
+        print path, ver >live
+      } else {
+        printf "%s", buf
+      }
+      buf = ""
+    }
+    /^collections:/ { flush(); inside = 1; print; next }
+    inside && /^[^[:space:]#]/ { flush(); inside = 0 }
+    inside && /^[[:space:]]*-[[:space:]]/ { flush(); buf = $0 "\n"; next }
+    inside && buf != "" { buf = buf $0 "\n"; next }
+    { print }
+    END { flush() }
+  ' "$1" >"$2"
+  touch "$3"
+}
+
 # ---- ansible -------------------------------------------------------------------------
 AN="$OUT/live/ansible"
 if [[ -d "$AN" ]]; then
@@ -192,16 +224,43 @@ if [[ -d "$AN" ]]; then
     command -v "$tool" >/dev/null || die 3 "$tool is required (scripts/install-dev-tools.sh)"
   done
   export ANSIBLE_LOCAL_TEMP="$OUT/.ansible-tmp" ANSIBLE_HOME="$OUT/.ansible-home"
+  # Nothing here may ask for credentials (a git source of a repo that doesn't exist).
+  export GIT_TERMINAL_PROMPT=0
   REQ="$AN/collections/requirements.yml"
   if [[ -f "$REQ" ]]; then
     command -v ansible-galaxy >/dev/null || die 3 "ansible-galaxy is required (scripts/install-dev-tools.sh)"
     COLL="$HOME/.cache/platform-practice/collections"
     mkdir -p "$COLL"
-    step "galaxy collections" "$AN" ansible-galaxy collection install -r "$REQ" -p "$COLL"
+    # From an-14 the Ansible code installs the repo's own collection from git by tag:
+    #   - name: https://github.com/<GH_OWNER>/<LIVE_REPO>.git#/<path>   type: git   version: <tag>
+    # Offline that repo doesn't exist (the fixture owner's), so such entries are installed from
+    # the reference tree's live/<path> instead (a path install, its dependencies come from the
+    # rest of the file), and the other entries from Galaxy as before. The tag's trailing X.Y.Z
+    # must be the version in <path>/galaxy.yml.
+    split_requirements "$REQ" "$OUT/requirements-galaxy.yml" "$OUT/requirements-live.txt"
+    GREQ="$REQ"
+    [[ -s "$OUT/requirements-live.txt" ]] && GREQ="$OUT/requirements-galaxy.yml"
+    if grep -qE '^[[:space:]]*-[[:space:]]' "$GREQ"; then
+      step "galaxy collections" "$AN" ansible-galaxy collection install -r "$GREQ" -p "$COLL"
+    fi
     export ANSIBLE_COLLECTIONS_PATH="$COLL"
+    if [[ -s "$OUT/requirements-live.txt" ]]; then
+      LIVECOLL="$OUT/.collections-live"
+      mkdir -p "$LIVECOLL"
+      while read -r path tag; do
+        [[ -f "$OUT/live/$path/galaxy.yml" ]] || die 1 "requirements.yml pins $tag from live repo path $path, which has no galaxy.yml in the reference"
+        gv="$(sed -nE 's/^version:[[:space:]]*["'"'"']?([^"'"'"'[:space:]]+).*/\1/p' "$OUT/live/$path/galaxy.yml" | head -n1)"
+        [[ "$tag" =~ ([0-9]+\.[0-9]+\.[0-9]+)$ && "${BASH_REMATCH[1]}" == "$gv" ]] ||
+          die 1 "requirements.yml pins $tag, but the reference collection at $path is version ${gv:-unknown}"
+        step "galaxy collection $tag (live repo, from the reference)" "$AN" ansible-galaxy collection install --no-deps --force -p "$LIVECOLL" "$OUT/live/$path"
+      done <"$OUT/requirements-live.txt"
+      export ANSIBLE_COLLECTIONS_PATH="$LIVECOLL:$COLL"
+    fi
   fi
   step "yamllint ansible" "$AN" yamllint     -d '{extends: default, rules: {line-length: {max: 160}, truthy: {check-keys: false}}}' .
-  step "ansible-lint ansible" "$AN" ansible-lint --profile production
+  # --offline: the collections are installed above (the live repo's own from the reference);
+  # ansible-lint must not try to install requirements.yml itself.
+  step "ansible-lint ansible" "$AN" ansible-lint --offline --profile production
   while IFS= read -r pb; do
     step "syntax-check ${pb#"$AN"/}" "$AN" ansible-playbook --syntax-check -i localhost, "$pb"
   done < <(

@@ -114,7 +114,27 @@ for _path, cols in json.loads(out).items():
     for name, meta in cols.items():
         installed.setdefault(name, meta.get("version"))
 bad = []
+def git_source(r):
+    # From an-14: the repo's own collection from git by tag,
+    #   name: https://github.com/<owner>/<repo>.git#/<path>, type: git, version: <ns>.<name>-X.Y.Z
+    # The collection's name comes from <path>/galaxy.yml in this repo (cwd is ansible/), else from
+    # the tag; the version is the tag's X.Y.Z.
+    import os, re
+    url, _, frag = r["name"].partition("#")
+    tag = str(r.get("version", ""))
+    m = re.search(r"([0-9]+\.[0-9]+\.[0-9]+)$", tag)
+    want = m.group(1) if m else tag
+    gy = os.path.join("..", frag.strip("/"), "galaxy.yml")
+    if frag and os.path.isfile(gy):
+        meta = yaml.safe_load(open(gy))
+        return f"{meta['namespace']}.{meta['name']}", want
+    return re.sub(r"-[0-9][0-9.]*$", "", tag), want
 for r in req:
+    if isinstance(r, dict) and (r.get("type") == "git" or str(r.get("name", "")).startswith("git+")):
+        name, want = git_source(r)
+        if installed.get(name) != want:
+            bad.append(f"{name}: pinned {r.get('version')}, installed {installed.get(name)}")
+        continue
     name = r["name"] if isinstance(r, dict) else r
     want = str(r.get("version", "")).lstrip("=") if isinstance(r, dict) else ""
     if installed.get(name) != want:
@@ -132,7 +152,17 @@ an_venv_sync() {
   [[ -x "$d/.venv/bin/python" ]] || python3 -m venv "$d/.venv"
   "$d/.venv/bin/pip" install -q --upgrade pip
   "$d/.venv/bin/pip" install -q -r "$d/requirements.txt"
-  (cd "$d" && .venv/bin/ansible-galaxy collection install -r collections/requirements.yml -p collections)
+  # From an-14 the tree pins the repo's own collection (acme.platform) by git tag: those tags
+  # must exist on GitHub before galaxy can clone them, and a moved tag must replace what is
+  # installed (--force).
+  if grep -qsE "github\.com/${GH_OWNER:?}/${LIVE_REPO:?}(\.git)?#" "$d/collections/requirements.yml"; then
+    # shellcheck source=/dev/null
+    source "$(dirname "$AN_PROBES")/collection-tag.sh"
+    an_collection_tag_pinned || return 1
+    (cd "$d" && .venv/bin/ansible-galaxy collection install --force -r collections/requirements.yml -p collections)
+  else
+    (cd "$d" && .venv/bin/ansible-galaxy collection install -r collections/requirements.yml -p collections)
+  fi
   az="$d/collections/ansible_collections/azure/azcollection/requirements.txt"
   if [[ -f "$az" ]]; then
     "$d/.venv/bin/pip" install -q -r "$az"
@@ -162,6 +192,42 @@ an_probe() {
   an_run ansible "$pattern" -b -m ansible.builtin.script -a "$AN_PROBES/$probe $*"
 }
 
+# an_role_dir <role>: the directory of role <role>, relative to LIVE_DIR: ansible/roles/<role>
+# until an-14, then roles/<role> of the collection under ansible/ (acme.platform, wherever its
+# source lives). Prints nothing and fails when there is none.
+an_role_dir() {
+  local d
+  if [[ -d "ansible/roles/$1" ]]; then
+    echo "ansible/roles/$1"
+    return 0
+  fi
+  d="$(find ansible \( -path ansible/.venv -o -path ansible/collections/ansible_collections -o -name .ansible -o -name molecule \) -prune \
+    -o -type d -path "*/roles/$1" -print -quit 2>/dev/null)"
+  [[ -n "$d" ]] && echo "$d"
+}
+
+# an_role_dirs: every role directory under ansible/ (ansible/roles/* and the roles of a collection
+# source), installed collections and the venv excluded. One path per line.
+an_role_dirs() {
+  local r d
+  while IFS= read -r r; do
+    for d in "$r"/*/; do
+      [[ -d "$d" ]] && echo "${d%/}"
+    done
+  done < <(find ansible \( -path ansible/.venv -o -path ansible/collections/ansible_collections -o -name .ansible -o -name molecule \) -prune \
+    -o -type d -name roles -print 2>/dev/null)
+  return 0
+}
+
+# an_module_file <name>: the Python file of custom module <name> under ansible/: ansible/library
+# (an-13) or a collection's plugins/modules (an-14). Prints it; fails when there is none.
+an_module_file() {
+  local f
+  f="$(find ansible \( -path ansible/.venv -o -path ansible/collections/ansible_collections -o -name .ansible \) -prune \
+    -o -type f -name "$1.py" \( -path "*/library/*" -o -path "*/plugins/modules/*" \) -print -quit 2>/dev/null)"
+  [[ -n "$f" ]] && echo "$f"
+}
+
 # an_playbooks: the playbook files under ansible/: site.yml, other top-level *.yml (imported from
 # site.yml) and ansible/playbooks/*.yml. One path per line.
 an_playbooks() {
@@ -175,7 +241,9 @@ an_playbooks() {
 # an_play_applies <group> <role>: a playbook has a play for hosts: <group> and applies role <role>
 # (`- role: x`, `- x`, `roles: [x]`, `- { role: x }`, or import_role/include_role name: x).
 an_play_applies() {
-  local group=$1 r=$2 f
+  local group=$1 f r
+  # The role by name or, from an-14, by its collection FQCN (acme.platform.<role>).
+  r="([a-z0-9_]+\.[a-z0-9_]+\.)?$2"
   while IFS= read -r f; do
     grep -qE "hosts:[[:space:]]*.?$group.?[[:space:]]*$" "$f" || continue
     grep -qE "^[[:space:]]*-[[:space:]]*.?$r.?[[:space:]]*$|role:[[:space:]]*.?$r([^[:alnum:]_.-]|$)|roles:[[:space:]]*\[([^]]*[[:space:],])?.?$r.?([[:space:],]|\])" "$f" && return 0
@@ -187,7 +255,8 @@ an_play_applies() {
 # an_molecule_scenario <role>: roles/<role>/molecule/default has the docker driver, a converge and
 # a verify playbook, no testinfra, and a custom test_sequence (if any) keeps idempotence and verify.
 an_molecule_scenario() {
-  local d="ansible/roles/$1/molecule/default" f
+  local d f
+  d="$(an_role_dir "$1")/molecule/default"
   f="$d/molecule.yml"
   [[ -f "$f" ]] && grep -qE "^driver:" "$f" && grep -qE "^[[:space:]]+name:[[:space:]]*.?docker.?[[:space:]]*$" "$f" || return 1
   compgen -G "$d/converge.y*ml" >/dev/null && compgen -G "$d/verify.y*ml" >/dev/null || return 1
@@ -211,11 +280,13 @@ an_hostvar() {
 
 # an_molecule_test <role>: molecule test for ansible/roles/<role>, venv active, plain output.
 an_molecule_test() {
-  [[ -f ansible/.venv/bin/activate ]] || return 3
+  local venv="$PWD/ansible/.venv" d
+  [[ -f "$venv/bin/activate" ]] || return 3
+  d="$(an_role_dir "$1")" && [[ -n "$d" ]] || return 1
   (
-    cd "ansible/roles/$1" || exit 1
+    cd "$d" || exit 1
     # shellcheck disable=SC1091
-    source ../../.venv/bin/activate
+    source "$venv/bin/activate"
     env ANSIBLE_NOCOLOR=1 ANSIBLE_FORCE_COLOR=0 PY_COLORS=0 molecule test
   )
 }
@@ -416,6 +487,117 @@ an_catchup_converge() {
   an_run ansible-playbook site.yml
 }
 
+# ---- phase C: delegation, the collection acme.platform ------------------------------------
+
+# an_delegates_to <playbook> <group>: a delegate_to: line of the playbook names the inventory
+# group <group>, directly (groups['role_jump'] | first) or through a variable whose definition (in the
+# playbook or the inventory's group variables) does. Never a host name or an IP.
+an_delegates_to() {
+  local f=$1 g=$2 line v
+  while IFS= read -r line; do
+    [[ "$line" == *"$g"* ]] && return 0
+    v="$(sed -nE 's/.*\{\{-?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*-?\}\}.*/\1/p' <<<"$line")"
+    [[ -n "$v" ]] || continue
+    grep -rqsE "^[[:space:]]*$v:.*$g" "$f" ansible/inventory ansible/group_vars && return 0
+  done < <(grep -E "^[[:space:]]*delegate_to:" "$f")
+  return 1
+}
+
+# an_coll_dir: the collection's source directory (the one whose galaxy.yml says acme / platform),
+# relative to LIVE_DIR.
+an_coll_dir() {
+  local g
+  while IFS= read -r g; do
+    grep -qE "^namespace:[[:space:]]*.?acme.?[[:space:]]*$" "$g" && grep -qE "^name:[[:space:]]*.?platform.?[[:space:]]*$" "$g" &&
+      { dirname "$g"; return 0; }
+  done < <(find ansible \( -path ansible/.venv -o -path ansible/collections/ansible_collections -o -name .ansible \) -prune \
+    -o -type f -name galaxy.yml -print 2>/dev/null)
+  return 1
+}
+
+# an_coll_pin: requirements.yml installs the collection from this repo's git URL, the #/ fragment
+# being the collection's directory, type git, version a tag acme.platform-X.Y.Z. Prints the tag.
+an_coll_pin() {
+  local d f=ansible/collections/requirements.yml
+  d="$(an_coll_dir)" || return 1
+  awk -v url="github.com/$GH_OWNER/$LIVE_REPO" -v frag="#/$d" '
+    function done_item() { if (own && git && tag != "") { print tag; found = 1; exit } }
+    /^[[:space:]]*-[[:space:]]/ { done_item(); own = 0; git = 0; tag = "" }
+    { line = $0; sub(/[[:space:]]*#[^\/].*$/, "", line) }
+    index(line, url) && (index(line, frag "\"") || index(line, frag "/") || index(line, frag "\047") || line ~ (frag "[[:space:]]*$")) { own = 1 }
+    line ~ /type:[[:space:]]*.?git/ { git = 1 }
+    line ~ /version:[[:space:]]*.?acme\.platform-[0-9]+\.[0-9]+\.[0-9]+/ { tag = line; sub(/.*version:[[:space:]]*/, "", tag); gsub(/["\047[:space:]]/, "", tag) }
+    END { if (!found) { done_item() } ; exit !found }
+  ' "$f"
+}
+
+# ---- phase C: the Ansible workflow (an-16 …) -------------------------------------------------
+
+export AN_WF=.github/workflows/ansible.yml
+
+# an_wf_jobs [file]: the job ids directly under jobs: of the workflow, one per line.
+an_wf_jobs() {
+  local f=${1:-$AN_WF}
+  [[ -f "$f" ]] || return 1
+  awk '/^jobs:/ { j = 1; next } j && /^[^[:space:]#]/ { j = 0 }
+    j && /^[[:space:]]+[A-Za-z0-9_-]+:/ { n = match($0, /[^[:space:]]/) - 1; if (!ind) ind = n
+      if (n == ind) { k = $0; sub(/^[[:space:]]+/, "", k); sub(/:.*/, "", k); print k } }' "$f"
+}
+
+# an_wf_job <job> [file]: the lines of that job, comments dropped.
+an_wf_job() {
+  local f=${2:-$AN_WF}
+  [[ -f "$f" ]] || return 1
+  awk -v want="$1" '/^[[:space:]]*#/ { next } /^jobs:/ { j = 1; next } j && /^[^[:space:]#]/ { j = 0 }
+    j && /^[[:space:]]+[A-Za-z0-9_-]+:/ { n = match($0, /[^[:space:]]/) - 1; if (!ind) ind = n
+      if (n == ind) { k = $0; sub(/^[[:space:]]+/, "", k); sub(/:.*/, "", k); cur = k } }
+    j && cur == want { print }' "$f"
+}
+
+# an_wf_self_hosted <job> [file]: the job runs on the self-hosted runner (runs-on names
+# self-hosted and acme-jump, in a list on one line or as list items).
+an_wf_self_hosted() {
+  local body
+  body="$(an_wf_job "$1" "${2:-$AN_WF}")" || return 1
+  grep -qE "runs-on:.*self-hosted|^[[:space:]]*-[[:space:]]*.?self-hosted" <<<"$body" &&
+    grep -qE "acme-jump" <<<"$body"
+}
+
+# an_wf_runner_jobs [file]: the ids of the jobs that run on the self-hosted runner.
+an_wf_runner_jobs() {
+  local j
+  while IFS= read -r j; do
+    an_wf_self_hosted "$j" "${1:-$AN_WF}" && echo "$j"
+  done < <(an_wf_jobs "${1:-$AN_WF}")
+  return 0
+}
+
+# an_wf_fork_guard <job> [file]: the job's if: keeps fork pull requests away from the runner
+# (head.repo.full_name compared with github.repository).
+an_wf_fork_guard() {
+  an_wf_job "$1" "${2:-$AN_WF}" | grep -E "^[[:space:]]+if:" |
+    grep -qE "head\.repo\.full_name[[:space:]]*==[[:space:]]*github\.repository|github\.repository[[:space:]]*==[[:space:]]*github\.event\.pull_request\.head\.repo\.full_name"
+}
+
+# an_wf_run_jobs <repo> <run id>: the run's jobs as JSON lines {name, conclusion, labels}.
+an_wf_run_jobs() {
+  gh api "repos/$1/actions/runs/$2/jobs?per_page=100" --jq '.jobs[] | {name, conclusion, labels}'
+}
+
+# an_wf_job_succeeded <repo> <run query> <job name> <self-hosted:0|1>: one of the newest 20
+# completed runs of ansible.yml matching <run query> (e.g. "event=push&branch=main") has a job
+# named <job name> that succeeded (and ran on acme-jump, if asked).
+an_wf_job_succeeded() {
+  local repo=$1 q=$2 job=$3 sh=$4 id
+  for id in $(gh api "repos/$repo/actions/workflows/ansible.yml/runs?status=completed&per_page=20&$q" --jq '.workflow_runs[].id'); do
+    an_wf_run_jobs "$repo" "$id" | jq -se --arg n "$job" --argjson sh "$sh" \
+      'any(.[]; (.name == $n or (.name | startswith($n + " ("))) and .conclusion == "success" and ($sh == 0 or (.labels | index("acme-jump") != null)))' >/dev/null && return 0
+  done
+  return 1
+}
+
 export -f an_run an_host_count an_on_all an_recap_clean an_second_run an_collection_pinned \
   an_first_file an_precommit_config an_collections_match an_count an_probe an_playbooks \
-  an_play_applies an_molecule_scenario an_group_ips an_hostvar an_molecule_test an_kv_name
+  an_play_applies an_molecule_scenario an_group_ips an_hostvar an_molecule_test an_kv_name \
+  an_role_dir an_role_dirs an_module_file an_delegates_to an_coll_dir an_coll_pin \
+  an_wf_jobs an_wf_job an_wf_self_hosted an_wf_runner_jobs an_wf_fork_guard an_wf_run_jobs an_wf_job_succeeded
