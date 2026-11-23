@@ -32,29 +32,42 @@ ci_before_login() {
     END { exit !(hit && (!login || hit < login)) }'
 }
 
-# ci_run_planned <repo> <run id>: the run's plan job ran its Terraform work (a step about terraform,
-# tflint or trivy succeeded). From tf-24 a PR that touches no Terraform path skips those steps and
-# its plan job is green without testing anything.
-ci_run_planned() {
-  gh api "repos/$1/actions/runs/$2/jobs?per_page=100" --jq '[.jobs[] | select(.name == "plan") | .steps[]
-    | select(.conclusion == "success" and (.name | test("^(Run|Post) ") | not) and (.name | test("terraform|tflint|trivy"; "i")))]
-    | length > 0' | grep -qx true
+# ci_tf_paths: the regular expression of paths that are Terraform's business: the TF_PATHS of the
+# live repo's terraform.yml (tf-24, cwd = LIVE_DIR), else the lab's own list (the same string the
+# reference workflow carries). One definition: the workflow's, when there is one.
+ci_tf_paths() {
+  local p="" def='^(terraform/|\.github/workflows/terraform\.yml$|\.github/scripts/|\.trivyignore\.yaml$|\.tflint\.hcl$)'
+  if [[ -f .github/workflows/terraform.yml ]]; then
+    p="$(sed -nE "s/^[[:space:]]*TF_PATHS:[[:space:]]*'([^']*)'.*$/\1/p" .github/workflows/terraform.yml | head -n1)"
+  fi
+  printf '%s\n' "${p:-$def}"
+}
+
+# ci_pr_noop <repo> <pr number>: none of the PR's changed files is a Terraform path, so from tf-24
+# its plan job skips its work and is green without testing anything. 1 (not a no-op) when the
+# files can't be listed.
+ci_pr_noop() {
+  local files
+  files="$(gh api --paginate "repos/$1/pulls/$2/files?per_page=100" --jq '.[].filename')" || return 1
+  ! grep -qE "$(ci_tf_paths)" <<<"$files"
 }
 
 # ci_pr_green_or_caught_up <owner/repo>: the plan job (tests, lint, scan) only runs on pull
-# requests, so the newest completed pull_request run of terraform.yml that planned (see
-# ci_run_planned) must be green. Catchup never opens a PR: it pushes "catchup: <id>" to main and
-# dispatches a run. So it also passes when the newest completed run on main is green, newer than
-# that PR run (or there is none), and its head commit message starts with "catchup:".
+# requests, so the newest completed pull_request run of terraform.yml for a PR that changed
+# Terraform must be green (its conclusion decides: success is green, anything else red). Runs for
+# PRs that changed no Terraform path (ci_pr_noop) are ignored; a run without a PR number counts.
+# Catchup never opens a PR: it pushes "catchup: <id>" to main and dispatches a run. So it also
+# passes when the newest completed run on main is green, newer than that PR run (or there is
+# none), and its head commit message starts with "catchup:".
 ci_pr_green_or_caught_up() {
-  local runs="repos/$1/actions/workflows/terraform.yml/runs?status=completed&per_page=20" id concl created pr="" main
-  while read -r id concl created; do
+  local runs="repos/$1/actions/workflows/terraform.yml/runs?status=completed&per_page=20" id concl created num pr="" main
+  while read -r id concl created num; do
     [[ -n "$id" ]] || continue
-    ci_run_planned "$1" "$id" || continue
+    if [[ -n "$num" ]] && ci_pr_noop "$1" "$num"; then continue; fi
     [[ "$concl" == success ]] && return 0
     pr=$created
     break
-  done < <(gh api "$runs&event=pull_request" --jq '.workflow_runs[] | "\(.id) \(.conclusion) \(.created_at)"')
+  done < <(gh api "$runs&event=pull_request" --jq '.workflow_runs[] | "\(.id) \(.conclusion) \(.created_at) \(.pull_requests[0].number // "")"')
   main="$(gh api "$runs&branch=main" --jq '.workflow_runs[0] // {} | {conclusion, created_at, message: (.head_commit.message // "")}')" || return 1
   jq -e --arg pr "$pr" '.conclusion == "success" and (.message | startswith("catchup:"))
     and ($pr == "" or .created_at > $pr)' <<<"$main" >/dev/null

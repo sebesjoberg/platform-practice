@@ -415,16 +415,19 @@ MT='source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh"'
 
 # ci_case <pr runs json> <main runs json>: runs ci_pr_green_or_caught_up against a gh stub that
 # applies the --jq filter to the canned API answer.
-# Every run's plan job ran its Terraform steps unless SKIPPED_RUNS lists its id (tf-24's change
-# filter skips them for PRs without Terraform changes).
+# PR_FILES maps PR numbers to their changed files ("7:terraform/main.tf 8:README.md"): runs whose
+# PR changed no Terraform path are no-ops (tf-24's change filter) and don't count.
 ci_case() {
-  PR_JSON=$1 MAIN_JSON=$2 SKIPPED_RUNS=${3:-} run bash -c '
-    planned='"'"'{"jobs":[{"name":"plan","steps":[{"name":"terraform fmt","conclusion":"success"}]}]}'"'"'
-    skipped='"'"'{"jobs":[{"name":"plan","steps":[{"name":"terraform fmt","conclusion":"skipped"}]}]}'"'"'
+  PR_JSON=$1 MAIN_JSON=$2 PR_FILES=${3:-} run bash -c '
     gh() {
+      if [[ "$2" == --paginate && "$3" == */pulls/*/files* ]]; then
+        local n f out=""
+        n=${3%/files*}; n=${n##*/}
+        for f in $PR_FILES; do [[ "${f%%:*}" == "$n" ]] && out+="${f#*:}"$'"'"'\n'"'"'; done
+        printf "%s" "$out"
+        return 0
+      fi
       case "$2" in
-        */jobs*) local id=${2%/jobs*}; id=${id##*/}
-          if [[ " $SKIPPED_RUNS " == *" $id "* ]]; then jq -c "$4" <<<"$skipped"; else jq -c "$4" <<<"$planned"; fi ;;
         *event=pull_request*) jq -r "$4" <<<"$PR_JSON" ;;
         *) jq -c "$4" <<<"$MAIN_JSON" ;;
       esac
@@ -457,11 +460,33 @@ run_json() { # run_json <conclusion> <created_at> [message] [id]
   [ "$status" -ne 0 ]
 }
 
-@test "ci check ignores green PR runs that skipped their Terraform steps (tf-24 change filter)" {
-  prs='{"workflow_runs":[{"id":9,"conclusion":"success","created_at":"2026-11-23T12:00:00Z"},{"id":8,"conclusion":"failure","created_at":"2026-11-23T10:00:00Z"}]}'
-  ci_case "$prs" "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #7')" "9"
+pr_runs() { # pr_runs "<id> <conclusion> <created_at> <pr number>"...: a runs list, newest first
+  local r out="" id c t n
+  for r in "$@"; do
+    read -r id c t n <<<"$r"
+    out+="${out:+,}{\"id\":$id,\"conclusion\":\"$c\",\"created_at\":\"$t\",\"pull_requests\":[{\"number\":$n}]}"
+  done
+  printf '{"workflow_runs":[%s]}' "$out"
+}
+
+@test "ci check: a green PR run for a Terraform change passes, whatever its steps are called" {
+  # e.g. unnamed "- run: terraform fmt -check" steps (GitHub calls them "Run terraform ...")
+  ci_case "$(pr_runs "9 success 2026-11-23T12:00:00Z 7")" "$(run_json failure 2026-11-23T11:00:00Z)" "7:terraform/landing-zone/main.tf"
+  [ "$status" -eq 0 ]
+}
+
+@test "ci check: a PR run that failed (say at fmt) fails, even with an older green one" {
+  ci_case "$(pr_runs "9 failure 2026-11-23T12:00:00Z 7" "8 success 2026-11-23T10:00:00Z 6")" \
+    "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #6')" "7:terraform/landing-zone/main.tf 6:terraform/env-dev/main.tf"
   [ "$status" -ne 0 ]
-  ci_case "$prs" "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #7')"
+}
+
+@test "ci check ignores runs of PRs that changed no Terraform path (tf-24 change filter)" {
+  runs="$(pr_runs "9 success 2026-11-23T12:00:00Z 7" "8 failure 2026-11-23T10:00:00Z 6")"
+  ci_case "$runs" "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #7')" "7:README.md 6:terraform/env-dev/main.tf"
+  [ "$status" -ne 0 ]
+  runs="$(pr_runs "9 success 2026-11-23T12:00:00Z 7" "8 success 2026-11-23T10:00:00Z 6")"
+  ci_case "$runs" "$(run_json failure 2026-11-23T11:00:00Z)" "7:README.md 6:.github/workflows/terraform.yml"
   [ "$status" -eq 0 ]
 }
 
