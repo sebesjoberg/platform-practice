@@ -208,6 +208,25 @@ TF
   [[ "$output" == *"banned string azurerm_lb in reference/live/l.tf"* ]]
 }
 
+@test "lint allows the backend's use_azuread_auth but flags the azuread provider" {
+  lint_copy
+  mkdir -p "$TEST_TMP/tracks/demo/01-first/reference/live"
+  printf 'terraform {
+  backend "azurerm" {
+    use_azuread_auth = true
+  }
+}
+' >"$TEST_TMP/tracks/demo/01-first/reference/live/v.tf"
+  echo 'Set `use_azuread_auth = true` in the backend.' >>"$TEST_TMP/tracks/demo/01-first/task.md"
+  run "$LINT" demo
+  [ "$status" -eq 0 ]
+  echo 'resource "azuread_group" "g" {}' >"$TEST_TMP/tracks/demo/02-second/solution.md"
+  run "$LINT" demo
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"02-second: banned string azuread_ in solution.md"* ]]
+  [[ "$output" != *"01-first"* ]]
+}
+
 @test "selftest offline builds the full before tree for the capstone" {
   export TRACKS_DIR="$REPO_ROOT/tests/fixtures/capstonetracks"
   run "$LAB" selftest --offline

@@ -141,7 +141,8 @@ lint_task() {
     grep -Iq . "$f" 2>/dev/null || continue
     rel="${f#"$d"/}"
     for tok in "${BANNED[@]}"; do
-      if awk -v t="$tok" '!index($0, "lint-allow: banned") && index($0, t) {f=1} END {exit !f}' "$f"; then
+      # use_azuread_auth (azurerm backend/provider setting) is not the banned azuread provider.
+      if awk -v t="$tok" '{ l = $0; gsub(/use_azuread_auth/, "", l) } !index(l, "lint-allow: banned") && index(l, t) {f=1} END {exit !f}' "$f"; then
         violation "$d" "banned string $tok in $rel"
       fi
     done
