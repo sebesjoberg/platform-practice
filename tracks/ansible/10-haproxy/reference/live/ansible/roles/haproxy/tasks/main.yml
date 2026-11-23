@@ -1,0 +1,52 @@
+---
+- name: Install HAProxy, and socat to talk to its Runtime API by hand
+  ansible.builtin.apt:
+    name:
+      - haproxy
+      - socat
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+
+# haproxy -c checks the complete file before it replaces the running configuration.
+- name: Write the HAProxy configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/haproxy -c -q -f %s
+  notify: Reload haproxy
+
+# Ubuntu's unit bind-mounts /dev/log into the chroot (BindReadOnlyPaths), which needs a mount
+# namespace. An unprivileged container (Molecule) can't create one: there a drop-in resets the
+# setting, and HAProxy just can't log from its chroot. On the VMs nothing changes.
+- name: Create the unit's drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/haproxy.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not haproxy_mount_namespace
+
+- name: Let the unit start without a mount namespace
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/haproxy.service.d/no-mount-namespace.conf
+    content: |
+      # Managed by Ansible (role haproxy): haproxy_mount_namespace is false
+      [Service]
+      BindReadOnlyPaths=
+    owner: root
+    group: root
+    mode: "0644"
+  when: not haproxy_mount_namespace
+
+- name: Keep HAProxy running and enabled
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: started
+    enabled: true
+    daemon_reload: "{{ not haproxy_mount_namespace }}"
