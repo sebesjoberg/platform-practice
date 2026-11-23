@@ -227,6 +227,8 @@ gh pr merge --squash --delete-branch && gh run watch
 ```bash
 az storage blob list --auth-mode login --account-name st{{PREFIX}}tfstate{{SUFFIX}} -c tfstate --query "[].name" -o tsv
 terraform -chdir=terraform/env-dev init && terraform -chdir=terraform/env-dev state list
+cat ~/.platform-lab/snapshots/tf-14.guids     # same as:
+az network vnet show -g rg-{{PREFIX}}-dev -n vnet-{{PREFIX}}-dev --query resourceGuid -o tsv
 ./lab.sh grade
 ```
 

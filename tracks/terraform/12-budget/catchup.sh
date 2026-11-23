@@ -6,7 +6,7 @@
 set -euo pipefail
 
 repo="$GH_OWNER/$LIVE_REPO"
-current="$(gh variable get BUDGET_EMAIL -R "$repo" 2>/dev/null || true)"
+current="$(gh api "repos/$repo/actions/variables/BUDGET_EMAIL" --jq .value 2>/dev/null || true)"
 if [[ -n "$current" ]]; then
   echo "tf-12: kept the repo variable BUDGET_EMAIL"
   exit 0

@@ -1,7 +1,11 @@
 # tf-14 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# ids.sh (next to this file): tf14_collect and tf14_expected_ids, shared with setup.sh.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/ids.sh"
+export TF14_ZONES
 export TF14_SA="st${PREFIX}tfstate$SUFFIX"
-export TF14_SNAP="$LAB_HOME/snapshots/tf-14.ids"
+export TF14_SNAP="$LAB_HOME/snapshots/tf-14.ids" TF14_GUIDS="$LAB_HOME/snapshots/tf-14.guids"
 export TF14_IMPORT_RE='^[[:space:]]*import[[:space:]]*\{'
 export TF14_VNETS_JQ='[.resources[]? | select(.mode == "managed" and .type == "azurerm_virtual_network") | .instances[].attributes.name] == [$v]'
 
@@ -9,34 +13,29 @@ tf14_has_key() { # tf14_has_key <stack> <key>
   grep -rqsE "backend[[:space:]]+\"azurerm\"" "terraform/$1" --include="*.tf" &&
     grep -rqsE "key[[:space:]]*=[[:space:]]*\"$2\"" "terraform/$1" --include="*.tf"
 }
-# tf14_expected_ids: what moves, built from the names (when setup.sh never took a snapshot,
-# e.g. after ./lab.sh catchup). Resource IDs are derived from names.
-tf14_expected_ids() {
-  local s="/subscriptions/$SUBSCRIPTION_ID/resourceGroups" n="providers/Microsoft.Network" e z sn
-  for e in dev prod; do
-    echo "$s/rg-$PREFIX-$e"
-    echo "$s/rg-$PREFIX-$e/$n/virtualNetworks/vnet-$PREFIX-$e"
-    for sn in app pe aca; do
-      echo "$s/rg-$PREFIX-$e/$n/virtualNetworks/vnet-$PREFIX-$e/subnets/snet-$sn"
-      echo "$s/rg-$PREFIX-$e/$n/networkSecurityGroups/nsg-$PREFIX-$e-$sn"
-    done
-    echo "$s/rg-$PREFIX-$e/$n/virtualNetworks/vnet-$PREFIX-$e/virtualNetworkPeerings/peer-$e-to-hub"
-    echo "$s/rg-$PREFIX-hub/$n/virtualNetworks/vnet-$PREFIX-hub/virtualNetworkPeerings/peer-hub-to-$e"
-    for z in privatelink.vaultcore.azure.net privatelink.blob.core.windows.net; do
-      echo "$s/rg-$PREFIX-hub/$n/privateDnsZones/$z/virtualNetworkLinks/link-vnet-$PREFIX-$e"
-    done
-  done
-}
-# tf14_ids_unchanged: every snapshotted ID still resolves to the same resource ID in Azure.
+# tf14_ids_unchanged: every ID of the snapshot (or, without one, of the name-derived list) is
+# still there. Compared case-insensitively against the same bulk lookups setup.sh used.
 tf14_ids_unchanged() {
-  local want got
-  if [[ -s "$TF14_SNAP" ]]; then want="$(tr -d '\r' <"$TF14_SNAP")"; else want="$(tf14_expected_ids)"; fi
-  want="$(tr '[:upper:]' '[:lower:]' <<<"$want" | grep -v '^[[:space:]]*$' | sort -u)"
-  [[ -n "$want" ]] || return 1
-  # shellcheck disable=SC2086 # one argument per ID
-  got="$(az resource show --ids $want -o json | jq -r 'if type == "array" then .[].id else .id end' |
-    tr '[:upper:]' '[:lower:]' | sort -u)" || return 1
-  [[ -z "$(comm -23 <(echo "$want") <(echo "$got"))" ]]
+  local d want rc=0
+  d="$(mktemp -d)"
+  if [[ -s "$TF14_SNAP" ]]; then want="$(cat "$TF14_SNAP")"; else want="$(tf14_expected_ids)"; fi
+  tr -d '\r' <<<"$want" | tr '[:upper:]' '[:lower:]' | grep -v '^[[:space:]]*$' | sort -u >"$d/want"
+  tf14_collect "$d/ids" "$d/guids" || true
+  tr '[:upper:]' '[:lower:]' <"$d/ids" | sort -u >"$d/got"
+  [[ -s "$d/want" && -z "$(comm -23 "$d/want" "$d/got")" ]] || rc=1
+  rm -rf "$d"
+  return "$rc"
+}
+# tf14_guids_unchanged: each spoke VNet keeps the resourceGuid setup.sh recorded. No baseline
+# (catchup removed it, or setup.sh never ran) means nothing to compare.
+tf14_guids_unchanged() {
+  local d rc=0
+  [[ -s "$TF14_GUIDS" ]] || return 0
+  d="$(mktemp -d)"
+  tf14_collect "$d/ids" "$d/guids" || true
+  [[ -z "$(comm -23 <(sort "$TF14_GUIDS") "$d/guids")" ]] || rc=1
+  rm -rf "$d"
+  return "$rc"
 }
 # tf14_state_vnets <key> <vnet>: the state blob <key> manages exactly the VNet <vnet>.
 tf14_state_vnets() {
@@ -47,7 +46,7 @@ tf14_state_vnets() {
   rm -f "$f"
   return "$rc"
 }
-export -f tf14_has_key tf14_expected_ids tf14_ids_unchanged tf14_state_vnets
+export -f tf14_collect tf14_expected_ids tf14_has_key tf14_ids_unchanged tf14_guids_unchanged tf14_state_vnets
 
 check_code "env-dev and env-prod have their own state keys" \
   'tf14_has_key env-dev env-dev\\.tfstate && tf14_has_key env-prod env-prod\\.tfstate && tf14_has_key landing-zone landing-zone\\.tfstate' \
@@ -76,3 +75,7 @@ check "each state manages its own VNet (landing-zone only the hub)" \
 check "every moved resource still exists with the same ID" \
   'tf14_ids_unchanged' \
   "a resource from $TF14_SNAP (or the expected spoke resources) no longer exists under its ID: was something destroyed or renamed?"
+
+check "the spoke VNets were not recreated (resourceGuid unchanged)" \
+  'tf14_guids_unchanged' \
+  "VNet was recreated (resourceGuid changed) — the move must not destroy anything (baseline: $TF14_GUIDS)"

@@ -3,7 +3,7 @@
 export TF11_SCOPE="/subscriptions/$SUBSCRIPTION_ID"
 export TF11_PROBE="rg-$PREFIX-policytest"
 export TF11_RPC_JQ='any(.[]; .roleDefinitionName == "Resource Policy Contributor" and .scope == env.TF11_SCOPE)'
-export TF11_DEF_JQ='.policyType == "Custom" and (.mode | ascii_downcase) == "all" and .policyRule.then.effect == "deny"'
+export TF11_DEF_JQ='.policyType == "Custom" and (.mode | ascii_downcase) == "all" and (.policyRule.then.effect | ascii_downcase) == "deny"'
 export TF11_TAG_ASSIGN_JQ='(.policyDefinitionId | ascii_downcase) == ((env.TF11_SCOPE + "/providers/Microsoft.Authorization/policyDefinitions/" + env.PREFIX + "-require-owner-tag") | ascii_downcase)'
 export TF11_LOC_ASSIGN_JQ='(.policyDefinitionId | ascii_downcase | endswith("/policydefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c")) and .parameters.listOfAllowedLocations.value == ["swedencentral"]'
 # The probe: an untagged rg-* group must be refused by policy. Whatever happens, the group must

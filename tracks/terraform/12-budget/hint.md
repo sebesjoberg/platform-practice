@@ -12,8 +12,12 @@ Traps:
   the workflow. It's an `env:` entry; at workflow level it reaches both jobs at once.
 - **`TF_VAR_` is case-sensitive after the prefix**: `TF_VAR_budget_email` for
   `variable "budget_email"`.
-- **No default means plan fails without it.** That's intended: a missing GitHub variable stops
-  the run with "No value for required variable" instead of mailing nobody.
+- **A missing GitHub variable doesn't leave the variable unset.** `${{ vars.BUDGET_EMAIL }}`
+  of an unknown variable is an empty string, so Terraform gets `TF_VAR_budget_email=""` and
+  your validation fails ("budget_email must be an email address ..."). That's why the
+  validation matters: without it, the action group would be planned with an empty address.
+  (Run locally without the variable at all, `plan -input=false` stops with "No value for
+  required variable" instead.)
 - **`sensitive = true`** hides the value in plan output. Plans become public PR comments in
   this repo.
 - **The start date must be the first of a month** and changing it replaces the budget.

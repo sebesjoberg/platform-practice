@@ -36,12 +36,17 @@ This task gets 25 minutes: two new stacks and a migration in two pull requests.
 
 `./lab.sh next` saved the IDs of everything that moves in `~/.platform-lab/snapshots/tf-14.ids`.
 They're the `id`s your import blocks need, and the grader checks that every one of them still
-exists afterwards.
+exists afterwards. It also recorded each spoke VNet's `resourceGuid`, which only changes when a
+VNet is destroyed and recreated.
+
+Don't run `./lab.sh pause` between PR 1 and grading: pause destroys the env stacks, resume
+recreates the spokes with new `resourceGuid`s, and the "not recreated" check fails. If that
+happened, `./lab.sh catchup tf-14` rebuilds the reference state and clears the baseline.
 
 ## Done when
 
 `./lab.sh grade` passes: the three state blobs exist, each environment's state holds its VNet
-(and landing-zone's only the hub), every snapshotted resource still exists, and no import
-blocks are left.
+(and landing-zone's only the hub), every snapshotted resource still exists, neither spoke VNet
+was recreated, and no import blocks are left.
 
 Target: 25 minutes.
