@@ -1,0 +1,12 @@
+# Trivy findings this repo accepts on purpose. Every entry says why; a finding without a good
+# reason gets fixed instead. Paths are relative to the repo root (CI scans "."). Keep each entry
+# on the one file it is about, so the same finding anywhere else still fails CI.
+misconfigurations:
+  - id: AZU-0013
+    paths:
+      - "app-env/main.tf"
+    statement: >-
+      The vault keeps public network access with network ACL default action Allow, a platform
+      decision: GitHub-hosted runners and WSL machines have no fixed IPs and write secrets over
+      the public endpoint, before any runner inside the VNet exists. The data plane is RBAC only
+      (Entra ID, no access policies); the private endpoint serves everything inside the VNets.

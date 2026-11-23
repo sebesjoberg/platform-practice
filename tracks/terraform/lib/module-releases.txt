@@ -5,3 +5,5 @@
 # task's reference). A task that releases a new module version adds its line here.
 v1.0.0 tf-19
 v2.0.0 tf-20
+v2.1.0 tf-21
+v2.2.0 tf-25
