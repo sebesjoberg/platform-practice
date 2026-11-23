@@ -1,0 +1,84 @@
+---
+# Assertions about the converged container. Registered variables carry the role prefix: ansible-lint
+# counts this file as part of the role.
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Validate the configuration nginx runs with
+      ansible.builtin.command: /usr/sbin/nginx -t
+      changed_when: false
+
+    - name: Read the state of the nginx service
+      ansible.builtin.systemd_service:
+        name: nginx
+      register: nginx_verify_unit
+
+    - name: Nginx is active and enabled
+      ansible.builtin.assert:
+        that:
+          - nginx_verify_unit.status.ActiveState == "active"
+          - nginx_verify_unit.status.UnitFileState == "enabled"
+
+    - name: Fetch the start page
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: nginx_verify_page
+
+    - name: The start page names the host and the environment
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['hostname'] in nginx_verify_page.content
+          - "'env: molecule' in nginx_verify_page.content"
+
+    - name: Fetch the start page over HTTPS
+      ansible.builtin.uri:
+        url: https://127.0.0.1/
+        validate_certs: false
+        return_content: true
+      register: nginx_verify_tls_page
+
+    - name: HTTPS serves the same page
+      ansible.builtin.assert:
+        that: ansible_facts['hostname'] in nginx_verify_tls_page.content
+
+    - name: Fingerprint the certificate nginx serves
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail &&
+          openssl s_client -connect 127.0.0.1:443 -servername acme-web.internal </dev/null 2>/dev/null
+          | openssl x509 -noout -fingerprint -sha256
+        executable: /bin/bash
+      register: nginx_verify_served
+      changed_when: false
+
+    - name: Fingerprint the test certificate
+      ansible.builtin.command: openssl x509 -noout -fingerprint -sha256 -in /root/molecule-tls.crt
+      register: nginx_verify_expected
+      changed_when: false
+
+    - name: Nginx serves the certificate it was given
+      ansible.builtin.assert:
+        that: nginx_verify_served.stdout == nginx_verify_expected.stdout
+
+    - name: Read the private key's metadata
+      ansible.builtin.stat:
+        path: /etc/nginx/tls/acme-web.key
+      register: nginx_verify_key
+
+    - name: The private key is root-only
+      ansible.builtin.assert:
+        that:
+          - nginx_verify_key.stat.pw_name == "root"
+          - nginx_verify_key.stat.mode == "0600"
+
+    - name: Look for the distribution's default site
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/default
+      register: nginx_verify_default_site
+
+    - name: The default site is gone
+      ansible.builtin.assert:
+        that: not nginx_verify_default_site.stat.exists

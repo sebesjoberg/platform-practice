@@ -1,0 +1,49 @@
+---
+# Key Vault keeps a certificate's private key in the secret of the same name. With the PEM content
+# type that secret is the key followed by the certificate. nginx_tls_pem may be a lookup, which
+# runs each time the variable is templated: read it once per host. A block scalar, not a YAML
+# double-quoted string: YAML would turn \r into a raw carriage return, which Jinja normalizes to
+# a newline inside a string literal, and the replace would then delete every line break.
+- name: Read the TLS bundle
+  ansible.builtin.set_fact:
+    nginx_tls_bundle: >-
+      {{ nginx_tls_pem | replace('\r', '') }}
+  no_log: true
+
+# The conditions are printed on failure, the value is not.
+- name: Check that the bundle holds a private key and a certificate
+  ansible.builtin.assert:
+    that:
+      - nginx_tls_bundle is search('-----BEGIN [A-Z ]*PRIVATE KEY-----')
+      - nginx_tls_bundle is search('-----BEGIN CERTIFICATE-----')
+    fail_msg: nginx_tls_pem must be a PEM bundle with a private key and a certificate (Key Vault content type application/x-pem-file)
+    quiet: true
+
+- name: Create the TLS directory
+  ansible.builtin.file:
+    path: "{{ nginx_tls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Read by nginx's master process, which runs as root, before it starts the workers.
+- name: Install the private key
+  ansible.builtin.copy:
+    content: "{{ nginx_tls_bundle | regex_search('(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.+?-----END [A-Z ]*PRIVATE KEY-----') }}\n"
+    dest: "{{ nginx_tls_dir }}/{{ nginx_tls_name }}.key"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Reload nginx
+
+# A renewed certificate in Key Vault changes this file on the next run, and the handler reloads.
+- name: Install the certificate
+  ansible.builtin.copy:
+    content: "{{ nginx_tls_bundle | regex_findall('(?s)-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----') | join('\n') }}\n"
+    dest: "{{ nginx_tls_dir }}/{{ nginx_tls_name }}.crt"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
