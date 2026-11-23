@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the environment file's metadata
+      ansible.builtin.stat:
+        path: /etc/acme/app.env
+      register: app_env_verify_stat
+
+    - name: The file is root:acme, mode 0640
+      ansible.builtin.assert:
+        that:
+          - app_env_verify_stat.stat.exists
+          - app_env_verify_stat.stat.pw_name == "root"
+          - app_env_verify_stat.stat.gr_name == "acme"
+          - app_env_verify_stat.stat.mode == "0640"
+
+    - name: Read the environment file
+      ansible.builtin.slurp:
+        src: /etc/acme/app.env
+      register: app_env_verify_file
+
+    - name: One KEY=value line per variable
+      ansible.builtin.assert:
+        that:
+          - "'APP_GREETING=molecule-stub-not-a-secret' in app_env_verify_lines"
+          - "'APP_MODE=test' in app_env_verify_lines"
+      vars:
+        app_env_verify_lines: "{{ (app_env_verify_file.content | b64decode).splitlines() }}"

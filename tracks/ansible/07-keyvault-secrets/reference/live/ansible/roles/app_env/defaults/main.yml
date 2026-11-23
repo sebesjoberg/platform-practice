@@ -1,0 +1,9 @@
+---
+# The environment file the app's systemd unit reads (EnvironmentFile=).
+app_env_path: /etc/acme/app.env
+
+# Group that may read it besides root: the app's service user joins it (an-09).
+app_env_group: acme
+
+# app_env_vars (required, no default): variable name -> value, one KEY=value line each. The
+# inventory fills it from Key Vault; the role never sees where the values come from.

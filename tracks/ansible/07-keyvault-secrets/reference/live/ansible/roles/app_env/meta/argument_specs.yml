@@ -1,0 +1,17 @@
+---
+argument_specs:
+  main:
+    short_description: The application's environment file
+    options:
+      app_env_vars:
+        type: dict
+        required: true
+        # Secret values: the argument check must not print them either.
+        no_log: true
+        description: Variable name -> value, written as KEY=value lines (single-line values).
+      app_env_path:
+        type: path
+        description: Path of the environment file.
+      app_env_group:
+        type: str
+        description: Group that may read the file besides root.
