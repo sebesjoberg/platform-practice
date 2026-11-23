@@ -38,5 +38,5 @@ check "private container tfstate exists" \
   "expected a container tfstate with public access None in $TF02_SA"
 
 check "you have a blob data role on $TF02_SA" \
-  'me="$(az ad signed-in-user show --query id -o tsv)" && [[ -n "$me" ]] && id="$(az storage account show -g "$TF02_RG" -n "$TF02_SA" --query id -o tsv)" && [[ -n "$id" ]] && az role assignment list --assignee "$me" --scope "$id" --include-inherited --query "[].roleDefinitionName" -o tsv | grep -Eqx "Storage Blob Data (Contributor|Owner)"' \
+  'me="$(az ad signed-in-user show --query id -o tsv)" && [[ -n "$me" ]] && id="$(az storage account show -g "$TF02_RG" -n "$TF02_SA" --query id -o tsv)" && [[ -n "$id" ]] && az role assignment list --assignee "$me" --scope "$id" --include-inherited --query "[].roleDefinitionName" -o tsv | grep -Ecx "Storage Blob Data (Contributor|Owner)" >/dev/null' \
   "your user needs Storage Blob Data Contributor on $TF02_SA (shared keys are off, Owner is not a data role)"

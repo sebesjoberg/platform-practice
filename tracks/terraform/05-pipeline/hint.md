@@ -13,6 +13,9 @@ Traps:
 - **The status check name is the job name.** tf-06 makes the check `plan` required. A matrix
   job reports as `plan (landing-zone)`, which never satisfies a required `plan` check. Loop
   over the stacks inside one job instead.
+- **Don't put a job in front of `plan`.** If `plan` `needs:` a job that fails, `plan` is
+  *skipped*, and a skipped required check counts as passing. Keep helpers (like
+  `.github/scripts/stacks.sh`) as steps inside the job.
 - **`AADSTS700213: No matching federated identity record`** means the token's subject doesn't
   match a credential from tf-04. Pull requests present `...:pull_request` and pushes to main
   `...:ref:refs/heads/main`. A job that sets `environment:` presents `...:environment:<name>`

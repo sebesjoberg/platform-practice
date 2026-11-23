@@ -26,6 +26,7 @@ else
   url="$(gh repo view "$repo" --json url --jq .url).git"
   git -C "$LIVE_DIR" remote add origin "$url"
 fi
+git -C "$LIVE_DIR" fetch -q origin
 
 cd "$LIVE_DIR"
 gid=()
@@ -34,7 +35,7 @@ if [[ -z "$(git config user.email || true)" ]]; then
 fi
 if ! git rev-parse --verify -q HEAD >/dev/null; then
   if git rev-parse --verify -q refs/remotes/origin/main >/dev/null; then
-    git checkout -q -b main origin/main # remote has main but its HEAD points elsewhere
+    git checkout -q -b main origin/main # no commits of our own: start from origin/main
   else
     git symbolic-ref HEAD refs/heads/main
     git "${gid[@]}" commit -q --allow-empty -m "Initial commit"
@@ -45,4 +46,12 @@ git rev-parse --verify -q refs/heads/main >/dev/null || {
   exit 1
 }
 git checkout -q main
+if git rev-parse --verify -q refs/remotes/origin/main >/dev/null; then
+  if git merge-base --is-ancestor main origin/main; then
+    git merge -q --ff-only origin/main # local main has nothing origin lacks: catch up
+  elif ! git merge-base --is-ancestor origin/main main; then
+    echo "tf-01: local main and origin/main in $LIVE_DIR have diverged; reconcile them first" >&2
+    exit 1
+  fi
+fi
 git push -q -u origin main

@@ -33,7 +33,8 @@ A Windows `az` or `terraform` under `/mnt/c/...` on your PATH does not count.
   - every `*.tfvars` file
   It must **not** ignore `*.auto.tfvars.example` files or `.terraform.lock.hcl`. You commit
   lock files later in the lab.
-- [ ] The `.gitignore` is committed on `main` and pushed to GitHub.
+- [ ] Your default branch must be `main` (locally and on GitHub). The `.gitignore` is committed
+      on `main` and pushed to GitHub.
 
 ## Done when
 

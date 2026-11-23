@@ -3,6 +3,9 @@
 export TF05_WF=.github/workflows/terraform.yml TF05_REPO="$GH_OWNER/$LIVE_REPO"
 export TF05_TAGS_JQ='.location == env.LOCATION and .tags.owner == env.OWNER_TAG and .tags.env == "hub" and .tags.managed_by == "terraform"'
 export TF05_VARS_JQ='(map({(.name): .value}) | add // {}) as $v | $v.AZURE_SUBSCRIPTION_ID == env.SUBSCRIPTION_ID and $v.AZURE_TENANT_ID == env.TENANT_ID and $v.AZURE_CLIENT_ID == env.TF05_CLIENT_ID'
+export TF05_COMMENT_JQ='.[] | select(.user.login == "github-actions[bot]" and ((.body // "") | contains("Terraform plan"))) | .id'
+# Job ids directly under jobs: (at the indent of the first one), one per line.
+export TF05_JOBS_AWK='/^jobs:/ { j = 1; next } j && /^[^[:space:]#]/ { j = 0 } j && /^[[:space:]]+[A-Za-z0-9_-]+:/ { match($0, /^[[:space:]]+/); if (!ind) ind = RLENGTH; if (RLENGTH == ind) { k = $0; sub(/^[[:space:]]+/, "", k); sub(/:.*/, "", k); print k } }'
 
 check_code "landing-zone stack has its own state key" \
   'grep -rqsE "backend[[:space:]]+\"azurerm\"" terraform/landing-zone --include="*.tf" && grep -rqsE "key[[:space:]]*=[[:space:]]*\"landing-zone\.tfstate\"" terraform/landing-zone --include="*.tf" && grep -rqsE "use_azuread_auth[[:space:]]*=[[:space:]]*true" terraform/landing-zone --include="*.tf"' \
@@ -16,9 +19,17 @@ check_code "workflow has push, pull_request and workflow_dispatch with input sta
   '[[ -f "$TF05_WF" ]] && grep -qE "^[[:space:]]*pull_request:" "$TF05_WF" && grep -qE "^[[:space:]]*push:" "$TF05_WF" && grep -qE "^[[:space:]]*workflow_dispatch:" "$TF05_WF" && grep -qE "^[[:space:]]+stacks:" "$TF05_WF"' \
   "$TF05_WF must trigger on pull_request, push and workflow_dispatch (input stacks)"
 
-check_code "workflow has jobs named plan and apply" \
-  '[[ -f "$TF05_WF" ]] && grep -qE "^[[:space:]]+plan:[[:space:]]*$" "$TF05_WF" && grep -qE "^[[:space:]]+apply:[[:space:]]*$" "$TF05_WF"' \
-  "$TF05_WF needs jobs named exactly plan and apply"
+check_code "workflow has exactly two jobs: plan and apply" \
+  '[[ -f "$TF05_WF" ]] && [[ "$(awk "$TF05_JOBS_AWK" "$TF05_WF" | sort | tr -s "[:space:]" " ")" == "apply plan " ]]' \
+  "$TF05_WF needs exactly the jobs plan and apply (an extra job that fails could leave the required plan check skipped)"
+
+check_code "stack discovery finds landing-zone and skips bootstrap" \
+  '[[ -f .github/scripts/stacks.sh ]] && out="$(bash .github/scripts/stacks.sh all)" && [[ " $out " == *" landing-zone "* && " $out " != *" bootstrap "* ]]' \
+  ".github/scripts/stacks.sh all must list landing-zone and never bootstrap"
+
+check_code "the starter's TODO(tf-05) parts are done" \
+  '[[ -f "$TF05_WF" ]] && ! grep -q "TODO(tf-05)" "$TF05_WF"' \
+  "$TF05_WF still contains TODO(tf-05) markers"
 
 check_code "workflow logs in with OIDC and holds no client secret" \
   '[[ -f "$TF05_WF" ]] && grep -qE "id-token:[[:space:]]*write" "$TF05_WF" && grep -qE "azure/login@v2" "$TF05_WF" && grep -qE "ARM_USE_OIDC:[[:space:]]*\"?true" "$TF05_WF" && ! grep -qiE "client-secret|CLIENT_SECRET|creds:" "$TF05_WF"' \
@@ -32,8 +43,9 @@ check "latest completed terraform run on main succeeded" \
   '[[ "$(gh api "repos/$TF05_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
   "the newest completed terraform.yml run on main is not green; open it in the Actions tab"
 
+# grep -c reads all of the paginated output (grep -q could close the pipe early under pipefail).
 check "a PR has a plan comment from the pipeline" \
-  'gh api --paginate "repos/$TF05_REPO/issues/comments?per_page=100" --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body" | grep -q "Terraform plan"' \
+  'gh api --paginate "repos/$TF05_REPO/issues/comments?per_page=100" --jq "$TF05_COMMENT_JQ" | grep -c . >/dev/null' \
   "no PR comment containing \"Terraform plan\" from github-actions[bot]"
 
 check "repo variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID are right" \

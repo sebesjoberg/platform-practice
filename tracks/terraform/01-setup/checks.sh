@@ -16,6 +16,10 @@ check "LIVE_DIR is a clone of $GH_OWNER/$LIVE_REPO" \
   'git remote get-url origin | grep -Eiq "[:/]$GH_OWNER/$LIVE_REPO(\.git)?$"' \
   "$LIVE_DIR must be a git clone whose origin is $GH_OWNER/$LIVE_REPO"
 
+check "default branch on GitHub is main" \
+  '[[ "$(gh api "repos/$GH_OWNER/$LIVE_REPO" --jq .default_branch)" == main ]]' \
+  "the default branch of $GH_OWNER/$LIVE_REPO must be main (git branch -M main, push, then set it in the repo settings)"
+
 check ".gitignore is pushed to main on GitHub" \
   '[[ "$(gh api "repos/$GH_OWNER/$LIVE_REPO/contents/.gitignore?ref=main" --jq .name)" == .gitignore ]]' \
   "no .gitignore on main in $GH_OWNER/$LIVE_REPO; commit and push it"

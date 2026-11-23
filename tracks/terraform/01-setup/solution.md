@@ -67,7 +67,9 @@ override.tf.json
 git check-ignore -v terraform/bootstrap/terraform.tfstate.backup   # matched by *.tfstate.*
 git check-ignore -v x.auto.tfvars.example || echo "not ignored (good)"
 git add .gitignore && git commit -m "Ignore Terraform state, working dirs and tfvars"
+git branch -M main      # an empty clone may start on "master" (init.defaultBranch); push main only
 git push -u origin main
+gh repo view {{GH_OWNER}}/{{LIVE_REPO}} --json defaultBranchRef --jq .defaultBranchRef.name   # main
 ```
 
 ## Verify

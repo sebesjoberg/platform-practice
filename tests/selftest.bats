@@ -211,12 +211,8 @@ TF
 @test "lint allows the backend's use_azuread_auth but flags the azuread provider" {
   lint_copy
   mkdir -p "$TEST_TMP/tracks/demo/01-first/reference/live"
-  printf 'terraform {
-  backend "azurerm" {
-    use_azuread_auth = true
-  }
-}
-' >"$TEST_TMP/tracks/demo/01-first/reference/live/v.tf"
+  printf '%s\n' 'terraform {' '  backend "azurerm" {' '    use_azuread_auth = true' '  }' '}' \
+    >"$TEST_TMP/tracks/demo/01-first/reference/live/v.tf"
   echo 'Set `use_azuread_auth = true` in the backend.' >>"$TEST_TMP/tracks/demo/01-first/task.md"
   run "$LINT" demo
   [ "$status" -eq 0 ]

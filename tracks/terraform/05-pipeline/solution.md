@@ -3,9 +3,10 @@
 ## Approach
 
 - `terraform/landing-zone` is an ordinary stack with its own state key.
-- Workflow logic: a small `stacks` job finds every directory under `terraform/` with an
-  `azurerm` backend (except `bootstrap`) and puts them in dependency order. `plan` runs on PRs
-  and comments the result. `apply` runs on pushes to `main` and on manual runs.
+- Workflow logic: exactly two jobs. Both start with `.github/scripts/stacks.sh`, which finds
+  every directory under `terraform/` with an `azurerm` backend (except `bootstrap`) and puts
+  them in dependency order. `plan` runs on PRs and comments the result. `apply` runs on pushes
+  to `main` and on manual runs.
 - Identity: the managed identity from tf-04 logs in through OIDC, so no secret exists. The
   IDs are plain repo variables.
 
@@ -51,66 +52,71 @@ resource "azurerm_resource_group" "hub" {
 }
 ```
 
-`.github/workflows/terraform.yml` (shortened; the full file is in the reference):
+The starter already had the triggers, permissions, checkout, setup and login. The
+`TODO(tf-05)` parts become these steps (the full file is in the reference).
+
+In job `plan`, after the `azure/login@v2` step:
 
 ```yaml
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      stacks: { description: "all, or a list of stacks", default: all, type: string }
-
-permissions:
-  contents: read
-
-env:
-  ARM_USE_OIDC: "true"
-  ARM_USE_AZUREAD: "true"
-  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  STACK_ORDER: "landing-zone shared env-dev env-prod observability teams/payments"
-
-jobs:
-  stacks:        # grep -rl 'backend "azurerm"' terraform | dirname | minus bootstrap, ordered
-    ...
-  plan:
-    needs: stacks
-    if: github.event_name == 'pull_request'
-    permissions: { contents: read, id-token: write, pull-requests: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: "1.17.2", terraform_wrapper: false }
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - run: terraform fmt -check -recursive -diff terraform
-      - id: plan    # init/validate/plan each stack, build comment.md starting with "### Terraform plan"
-        ...
-      - if: always() && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure')
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff terraform
+      - name: terraform init, validate, plan
+        id: plan
+        env:
+          STACKS: ${{ steps.stacks.outputs.list }}
+        run: |
+          comment="$RUNNER_TEMP/comment.md"
+          echo "### Terraform plan" > "$comment"
+          max=9000   # bytes of plan output per stack
+          rc=0
+          for s in $STACKS; do
+            d="terraform/$s"; log="$RUNNER_TEMP/plan-${s//\//-}.log"
+            if terraform -chdir="$d" init -input=false -no-color >"$log" 2>&1 &&
+              terraform -chdir="$d" validate -no-color >>"$log" 2>&1 &&
+              terraform -chdir="$d" plan -input=false -no-color -lock-timeout=5m -out=tfplan >>"$log" 2>&1; then
+              summary=$(grep -m1 -E '^(Plan:|No changes\.)' "$log" || echo planned)
+              terraform -chdir="$d" show -no-color tfplan >"$log.out"
+            else
+              rc=1; summary=FAILED; cp "$log" "$log.out"
+            fi
+            # append "<details><summary>$s: $summary</summary>" + the first $max bytes in a code
+            # fence + "(truncated — see the run log)" when cut; cap the whole file at 60 KB
+          done
+          exit "$rc"
+      - name: Comment the plan on the PR
+        if: always() && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
-  apply:
-    needs: stacks
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    concurrency: { group: terraform-apply, cancel-in-progress: false }
-    permissions: { contents: read, id-token: write }
-    steps:   # checkout, setup-terraform, azure/login, then per stack: init + apply -auto-approve
+```
+
+In job `apply`, after `azure/login@v2`:
+
+```yaml
+      - name: terraform apply
+        env:
+          STACKS: ${{ steps.stacks.outputs.list }}
+        run: |
+          for s in $STACKS; do
+            terraform -chdir="terraform/$s" init -input=false
+            terraform -chdir="terraform/$s" apply -auto-approve -input=false -lock-timeout=5m
+          done
 ```
 
 Design notes:
-- One `plan` job, not a matrix, so the status check is literally named `plan` (tf-06).
-- The `workflow_dispatch` input reaches the script through `env:`, never through `${{ }}`
-  inside `run:`.
-- `apply` only runs on `main`. A manual run on another branch would present a subject that
-  matches no federated credential, so it can't log in anyway.
-- Applies share a concurrency group and are never cancelled half-way.
-- Plans of a public repo are public. Fine here (no secrets in the plan), but remember it.
+- **Exactly two jobs.** Stack discovery is a step inside each job
+  (`bash .github/scripts/stacks.sh`), not a job of its own. If a separate job failed, `plan`
+  would be *skipped*, and GitHub counts a skipped required check as passing (tf-06).
+- **One `plan` job, not a matrix**, so the status check is literally named `plan`.
+- **`stacks.sh` takes `all` or a list.** The `workflow_dispatch` input reaches it through
+  `env:`, never through `${{ }}` inside `run:`. Unknown stack names fail the run.
+- **Comment size.** At most 9 KB of plan per stack and 60 KB in total, far below GitHub's
+  64 KB comment limit.
+- **`apply` only runs on `main`.** A manual run on another branch would present a subject
+  that matches no federated credential, so it can't log in anyway.
+- **Applies** share a concurrency group and are never cancelled half-way.
+- **Plans of a public repo are public.** Fine here (no secrets in the plan), but remember it.
 
 ## Commands
 
@@ -121,7 +127,7 @@ gh variable set AZURE_TENANT_ID --body "$(az account show --query tenantId -o ts
 gh variable set AZURE_SUBSCRIPTION_ID --body "$(az account show --query id -o tsv)"
 
 git switch -c pipeline
-git add terraform/landing-zone .github/workflows/terraform.yml
+git add terraform/landing-zone .github/workflows/terraform.yml .github/scripts/stacks.sh
 git commit -m "Pipeline: plan on PR, apply on merge; landing-zone stack"
 git push -u origin pipeline
 gh pr create --fill

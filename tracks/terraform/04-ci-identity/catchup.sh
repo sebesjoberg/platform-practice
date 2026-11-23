@@ -4,10 +4,13 @@
 set -euo pipefail
 
 repo="$GH_OWNER/$LIVE_REPO"
-prefix="$(gh api "repos/$repo/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty' 2>/dev/null || true)"
-if [[ "$prefix" != *@* ]]; then
-  echo "tf-04: opting $repo in to immutable OIDC subject claims"
-  gh api -X PUT "repos/$repo/actions/oidc/customization/sub" -F use_default=true -F use_immutable_subject=true >/dev/null
+# Opt in only when GitHub positively reports a legacy (name-based) prefix. A failed GET or an
+# absent field changes nothing: the reference builds the immutable prefix from the repo API.
+if prefix="$(gh api "repos/$repo/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty' 2>/dev/null)" &&
+  [[ -n "$prefix" && "$prefix" != *@* ]]; then
+  echo "tf-04: opting $repo in to immutable OIDC subject claims (was $prefix)"
+  gh api -X PUT "repos/$repo/actions/oidc/customization/sub" -F use_default=true -F use_immutable_subject=true >/dev/null ||
+    echo "tf-04: could not opt in; continuing with the API-built prefix" >&2
 fi
 
 cd terraform/bootstrap

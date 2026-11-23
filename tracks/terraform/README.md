@@ -43,9 +43,10 @@ Later tasks and their checks assume these. Keep them in your own code.
   (`bootstrap.tfstate`, `landing-zone.tfstate`, …), always with `use_azuread_auth = true`.
   Shared keys are disabled on the account.
 - **Stacks.** A stack is a directory under `terraform/` with an `azurerm` backend. The pipeline
-  finds stacks on its own and applies them in the order of `STACK_ORDER` in
-  `.github/workflows/terraform.yml` (`landing-zone shared env-dev env-prod observability
-  teams/payments`), then any others alphabetically. `bootstrap` is applied locally only:
+  finds stacks on its own with `.github/scripts/stacks.sh`, a step in both the `plan` and the
+  `apply` job; the workflow has exactly these two jobs. Stacks run in the order of
+  `STACK_ORDER` in `.github/workflows/terraform.yml` (`landing-zone shared env-dev env-prod
+  observability teams/payments`), then any others alphabetically. `bootstrap` is applied locally only:
   CI never manages its own identity.
 - **Tags on every resource group.** `owner = "<your owner tag>"`, `env`, `managed_by =
   "terraform"`. The `env` values are `platform` (bootstrap: state and CI identity), `hub`

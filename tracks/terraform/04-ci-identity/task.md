@@ -32,6 +32,9 @@ In `terraform/bootstrap`:
   `<prefix>` is your repo's OIDC subject prefix. New repos use the immutable format
   `repo:{{GH_OWNER}}@<owner id>/{{LIVE_REPO}}@<repo id>`. Read yours with
   `gh api repos/{{GH_OWNER}}/{{LIVE_REPO}}/actions/oidc/customization/sub --jq .sub_claim_prefix`.
+  If that prints nothing (the field is missing), build it from the repo's IDs:
+  `gh api repos/{{GH_OWNER}}/{{LIVE_REPO}} --jq '"repo:\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"'`.
+  When `sub_claim_prefix` is there, both commands print the same value.
 - [ ] Role assignments for the identity:
   - `Contributor` on the subscription
   - `Role Based Access Control Administrator` on the subscription, with a condition
