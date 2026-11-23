@@ -24,7 +24,10 @@ user `azureuser`, your key `~/.ssh/<prefix>_lab`.
   (marks it done, which `next ansible` requires), then `./lab.sh next ansible`.
 
 The VMs cost money every hour: `./lab.sh pause` when you stop, `./lab.sh resume` when you're back.
-Resume brings the VMs back empty; re-run your playbooks (`ansible-playbook site.yml`).
+Resume brings the VMs back empty; re-run your playbooks (`ansible-playbook site.yml`). From an-07
+on, resume also brings back an empty dev Key Vault: first run `tracks/ansible/lib/keyvault-prereqs.sh`
+from the lab directory (it stores a new `app-greeting` secret and issues a new `web-tls`
+certificate, for the tasks you have started), then `site.yml`.
 
 ## Conventions
 
@@ -58,3 +61,12 @@ Later tasks and their checks assume these. Keep them in your own code.
   run leaves `main` red, and `./lab.sh catchup an-XX` treats a red tf-25 state as missing and
   replays the Terraform reference.
 - **No secrets in the repo** (public). Keys stay in `~/.ssh`; secrets come from Key Vault (an-07).
+  The `azure.azcollection.azure_keyvault_secret` lookups live in the inventory's group variables
+  (vault URL per environment in `env_<name>.yml`, the auth source in `acme_kv_auth_source`: `cli`
+  locally, `msi` on the runner), roles get plain values and write them with `no_log`.
+- **Roles don't know where they run.** Plays target groups (`role_web`, `role_jump`); per-host and
+  per-environment values (IPs, the environment name, Key Vault values) come from the inventory.
+  What a container can't do in Molecule (chrony, systemd mount namespaces) is switched off by a
+  documented role variable that only the scenario sets.
+- **One release knob.** `app_version` in the web servers' group variables picks the app release
+  (an-09); deploys and rollbacks change it (`-e app_version=1.1.0`), nothing else.
