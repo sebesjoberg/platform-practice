@@ -63,7 +63,9 @@ Later tasks and their checks assume these. Keep them in your own code.
   CI never manages its own identity. Nothing under `terraform/modules/` is ever a stack (tf-15).
   `observability` (tf-29) owns the Log Analytics workspace and the Activity Log export, moved
   out of landing-zone; `teams/payments` (tf-31, key `teams-payments.tfstate`) is the first
-  onboarded product team, one `team-env` module call. landing-zone also holds the click-ops
+  onboarded product team, one `team-env` module call inside `rg-<prefix>-payments`, which
+  bootstrap vends together with CI's right to grant `Contributor` in that group only (CI never
+  holds that right at subscription scope). landing-zone also holds the click-ops
   storage account imported in tf-26 (`rg-<prefix>-legacy`), because pause never destroys it.
 - **Jobs.** `plan` (pull requests) plans every stack and is the required status check (tf-06),
   so it never `needs:` another job: a job it waited for could fail and leave it skipped, and a
@@ -71,6 +73,12 @@ Later tasks and their checks assume these. Keep them in your own code.
   selected stacks. From tf-24 `apply` skips `env-prod`, and a third job `apply-prod`
   (`needs: apply`, `environment: prod`) applies it after the `prod` environment's reviewer
   approves; its OIDC subject `…:environment:prod` matches the credential `gh-env-prod`.
+  Also from tf-24, only Terraform changes reach Azure: a PR or push that touches none of
+  `terraform/`, `.github/workflows/terraform.yml`, `.github/scripts/`, `.trivyignore.yaml` and
+  `.tflint.hcl` (the Ansible track's code, docs) skips plan's steps (`plan` still succeeds) and,
+  through a `changes` job, both apply jobs: no prod approval, no red run. A manual run always
+  applies. Graders that want "the pipeline applied cleanly" only count runs whose `apply` job ran
+  (`tracks/terraform/lib/ci-runs.sh`).
   `.github/workflows/drift.yml` (tf-27) plans every stack with `-detailed-exitcode` on weekday
   mornings and on demand, never applies, opens or updates an issue labelled `drift` when Azure
   differs from `main` and fails; a clean run closes that issue. It plans as `main` (credential
@@ -104,9 +112,10 @@ Later tasks and their checks assume these. Keep them in your own code.
   `TF_VAR_learner_ip` and `TF_VAR_ssh_public_key`. Export the `TF_VAR_*` values in your shell
   before running those stacks locally (`./lab.sh pause` and `nuke` fill in harmless values).
   Dependabot PRs get no Actions secrets, so `BUDGET_EMAIL` and `LEARNER_IP` also exist as
-  **Dependabot secrets** (`gh secret set --app dependabot …`, tf-30). From tf-31 the workflows
-  also pass their own `github.token` as `TF_VAR_github_token`: the team stacks look up their team
-  repo in GitHub's API, and anonymous calls are rate limited per runner IP.
+  **Dependabot secrets** (`gh secret set --app dependabot …`, tf-30). From tf-31 the Terraform
+  steps (and only those) also get the job's own `github.token` as `TF_VAR_github_token`: the team
+  stacks look up their team repo in GitHub's API, and anonymous calls are rate limited per runner
+  IP. Checkouts don't persist git credentials (`persist-credentials: false`).
 - **Workloads.** Each environment's identity and Key Vault come from the `app-env` module
   (tf-21). Vaults use RBAC, 7 days of soft delete and no purge protection, and the env stacks
   set `features { key_vault { purge_soft_delete_on_destroy = true } }` so pause/resume can
