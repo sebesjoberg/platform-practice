@@ -1,0 +1,31 @@
+---
+# Ansible validates these before the role runs: a missing key list fails fast, not halfway.
+argument_specs:
+  main:
+    short_description: Baseline for every Ubuntu VM
+    options:
+      base_packages:
+        type: list
+        elements: str
+        description: Packages every VM gets.
+      base_ops_user:
+        type: str
+        description: Name of the non-root admin account.
+      base_ops_authorized_keys:
+        type: list
+        elements: str
+        required: true
+        description: SSH public keys of the ops user; the role manages them exclusively.
+      base_timezone:
+        type: str
+        description: Timezone, for example Etc/UTC.
+      base_ntp_pools:
+        type: list
+        elements: str
+        description: Extra NTP pools for chrony.
+      base_unattended_upgrades_reboot:
+        type: bool
+        description: Reboot automatically when an upgrade needs it.
+      base_unattended_upgrades_reboot_time:
+        type: str
+        description: When to reboot, if rebooting is on.

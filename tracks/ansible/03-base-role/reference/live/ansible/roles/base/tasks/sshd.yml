@@ -1,0 +1,12 @@
+---
+# sshd_config includes sshd_config.d/*.conf at its top, in lexical order, and for most keywords
+# the first value read wins. cloud-init writes 50-cloud-init.conf, so this drop-in sorts first.
+- name: Harden sshd with a drop-in
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd

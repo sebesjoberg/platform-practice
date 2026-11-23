@@ -1,0 +1,23 @@
+---
+- name: Create the ops user
+  ansible.builtin.user:
+    name: "{{ base_ops_user }}"
+    groups: [sudo]
+    append: true
+    shell: /bin/bash
+    create_home: true
+
+- name: Authorize exactly the ops user's keys
+  ansible.posix.authorized_key:
+    user: "{{ base_ops_user }}"
+    key: "{{ base_ops_authorized_keys | join('\n') }}"
+    exclusive: true
+
+- name: Let the ops user sudo without a password (it has none)
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ base_ops_user }}"
+    content: "{{ base_ops_user }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s

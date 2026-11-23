@@ -1,0 +1,9 @@
+---
+# How Ansible logs in to every lab VM: tf-25 created the admin user and authorized this key.
+ansible_user: azureuser
+ansible_ssh_private_key_file: ~/.ssh/{{PREFIX}}_lab
+
+# Role base: the ops user logs in with the same lab key (the public half; the private key never
+# leaves your machine).
+base_ops_authorized_keys:
+  - "{{ lookup('ansible.builtin.file', '~/.ssh/{{PREFIX}}_lab.pub') }}"
