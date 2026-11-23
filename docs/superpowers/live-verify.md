@@ -133,3 +133,15 @@ Things the offline gate cannot prove. Check each during the live selftest; fix a
 - [ ] an-05: `molecule test` with the unprivileged systemd container on Docker Desktop WSL (cgroup v2) ≤ 900 s.
 - [ ] Catchup end to end: `catchup an-05` from a tf-25 state runs an-01 (venv), an-03 (site.yml), an-04 (hook); `grade an-05` passes.
 - [ ] Ansible-only PR after tf-24's change filter: plan green, apply/apply-prod skipped, no approval requested.
+
+## Ansible phase B (an-06…an-10)
+- [ ] an-07: `azure_keyvault_secret` lookup with `auth_source=cli`, `use_msi=false` against kv-{P}-dev-{S} from WSL (Linux az); ~2 lookups per web host per run.
+- [ ] an-07 setup: `az keyvault secret set --file … --encoding utf-8`, `secret list` JMESPath, `list-deleted`/`recover`.
+- [ ] an-08: learner can create the vault-scope Certificates Officer assignment (MSA guest?); 403 retry covers RBAC propagation (≤10 min).
+- [ ] an-08 cert: `certificate create --policy @file`; PEM secret format (PKCS#8 key first, LF); `x509ThumbprintHex` uppercase SHA-1.
+- [ ] an-08: `openssl s_client` jump → web private IPs over the peering.
+- [ ] an-09: full sandbox (ProtectSystem=strict, ProcSubset=pid, IPAddressDeny) starts python3 on the VMs; exposure ≤ 4.9 (expected 1–2); `-e app_version=broken` fails at the gate; re-run recovers.
+- [ ] an-10: HAProxy health checks jump → web :80/health; socket mode 660 group haproxy after reload; memory on the 1 GiB jump.
+- [ ] Check timing: probe checks (2–3 inventory loads) within 180 s; second site.yml run within 480 s.
+- [ ] `./lab.sh catchup an-10` from tf-25 end to end, then `grade an-10`.
+- [ ] pause → resume (after the controller's resume fix): vault contents restored, site.yml redeploys new secret and new cert (new thumbprint).
