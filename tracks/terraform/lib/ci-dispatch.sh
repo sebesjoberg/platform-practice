@@ -5,11 +5,12 @@
 # the pending deployment as them. Poll intervals are overridable for tests (CI_POLL_SECONDS,
 # CI_RETRY_SECONDS).
 
-# ci_new_run <repo> <known ids>: the newest workflow_dispatch run of terraform.yml whose id is
-# not in <known ids> (space separated, with spaces around), empty if none yet.
+# ci_new_run <repo> <known ids> [workflow file]: the newest workflow_dispatch run of the workflow
+# (default terraform.yml) whose id is not in <known ids> (space separated, with spaces around),
+# empty if none yet.
 ci_new_run() {
   local r
-  for r in $(gh run list -R "$1" --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId'); do
+  for r in $(gh run list -R "$1" --workflow "${3:-terraform.yml}" --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId'); do
     if [[ "$2" != *" $r "* ]]; then
       echo "$r"
       return 0
@@ -85,5 +86,27 @@ ci_dispatch_wait() {
     sleep "${CI_RETRY_SECONDS:-60}"
   done
   echo "$tag: the terraform workflow keeps failing; see gh run list -R $repo" >&2
+  return 1
+}
+
+# ci_workflow_wait <repo> <workflow file> <tag>: dispatch another workflow of the live repo on
+# main (no inputs; tf-27's drift.yml) and wait for that run. One attempt: 0 = success.
+ci_workflow_wait() {
+  local repo=$1 wf=$2 tag=$3 known id
+  known=" $(gh run list -R "$repo" --workflow "$wf" --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId' | tr '\n' ' ') "
+  gh workflow run "$wf" -R "$repo" --ref main
+  id=""
+  for _ in $(seq 1 30); do
+    id="$(ci_new_run "$repo" "$known" "$wf")"
+    [[ -n "$id" ]] && break
+    sleep "${CI_POLL_SECONDS:-5}"
+  done
+  [[ -n "$id" ]] || { echo "$tag: could not find the dispatched $wf run" >&2; return 1; }
+  echo "$tag: waiting for $wf run $id"
+  if ci_wait_run "$repo" "$id"; then
+    echo "$tag: $wf run $id succeeded"
+    return 0
+  fi
+  echo "$tag: $wf run $id failed; see gh run view $id -R $repo --log-failed" >&2
   return 1
 }
