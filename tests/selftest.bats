@@ -182,3 +182,107 @@ TF
   [ "$status" -ne 0 ]
   [[ "$output" == *"FAIL"*"fmt"* ]]
 }
+
+# --- fix round 1 ------------------------------------------------------------------------
+
+@test "lint flags a banned string in a large file" {
+  lint_copy
+  mkdir -p "$TEST_TMP/tracks/demo/01-first/reference/live"
+  f="$TEST_TMP/tracks/demo/01-first/reference/live/big.tf"
+  echo 'sku = "Premium"' >"$f"
+  awk 'BEGIN { for (i = 0; i < 20000; i++) print "filler filler filler filler" }' >>"$f"
+  [ "$(wc -c <"$f")" -gt 300000 ]
+  run "$LINT" demo
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"banned string Premium in reference/live/big.tf"* ]]
+}
+
+@test "lint flags banned resource types" {
+  lint_copy
+  mkdir -p "$TEST_TMP/tracks/demo/01-first/reference/live"
+  echo 'resource "azurerm_bastion_host" "b" {}' >"$TEST_TMP/tracks/demo/01-first/reference/live/b.tf"
+  echo 'resource "azurerm_lb" "l" {}' >"$TEST_TMP/tracks/demo/01-first/reference/live/l.tf"
+  run "$LINT" demo
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"banned string azurerm_bastion_host in reference/live/b.tf"* ]]
+  [[ "$output" == *"banned string azurerm_lb in reference/live/l.tf"* ]]
+}
+
+@test "selftest offline builds the full before tree for the capstone" {
+  export TRACKS_DIR="$REPO_ROOT/tests/fixtures/capstonetracks"
+  run "$LAB" selftest --offline
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cap-01"*"fail"*"pass"*"ok"* ]]
+}
+
+@test "selftest offline does not reuse a stale before tree" {
+  # tracks run ansible, capstone, terraform: tf-01 comes last and must start from an empty tree
+  export TRACKS_DIR="$REPO_ROOT/tests/fixtures/capstonetracks"
+  run "$LAB" selftest --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tf-01"*"fail"*"pass"*"ok"* ]]
+}
+
+@test "selftest rejects unknown or reversed ranges before running anything" {
+  export TRACKS_DIR="$REPO_ROOT/tests/fixtures/selftesttracks"
+  run "$LAB" selftest --offline good --to nope-1
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"st-01"* ]]
+  run "$LAB" selftest --offline good --from nope-1
+  [ "$status" -eq 2 ]
+  run "$LAB" selftest --offline good --from st-02 --to st-01
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"before"* ]]
+  [[ "$output" != *"ok"* ]]
+}
+
+# shims: ansible tools that log their arguments (VALIDATE_SHIM_DIR takes priority over real tools)
+ansible_fixture() {
+  command -v awk >/dev/null
+  export PATH="${PATH#"$REPO_ROOT"/tests/fakes:}"
+  export TRACKS_DIR="$TEST_TMP/an"
+  AN="$TRACKS_DIR/an/01-x/reference/live/ansible"
+  mkdir -p "$AN/inventory" "$AN/collections"
+  printf -- '---\nid: an-01\ntitle: X\ntarget_minutes: 5\nrequires: []\n---\n# X\n' >"$TRACKS_DIR/an/01-x/task.md"
+  printf -- '---\n- name: Demo\n  hosts: all\n  tasks: []\n' >"$AN/site.yml"
+  printf -- '---\nall:\n  hosts:\n    h1:\n' >"$AN/static.yml"
+  printf -- '---\nall:\n  hosts:\n    h2:\n' >"$AN/inventory/hosts.yml"
+  export SHIM_LOG="$TEST_TMP/shim.log"
+  : >"$SHIM_LOG"
+  export VALIDATE_SHIM_DIR="$TEST_TMP/shims"
+  mkdir -p "$VALIDATE_SHIM_DIR"
+  for t in yamllint ansible-lint ansible-playbook ansible-galaxy; do
+    printf '#!/usr/bin/env bash\necho "%s $* [collections=${ANSIBLE_COLLECTIONS_PATH:-}]" >>"$SHIM_LOG"\n' "$t" >"$VALIDATE_SHIM_DIR/$t"
+    chmod +x "$VALIDATE_SHIM_DIR/$t"
+  done
+}
+
+@test "validate-reference does not syntax-check inventories as playbooks" {
+  ansible_fixture
+  run "$VALIDATE" an-01 --no-molecule
+  [ "$status" -eq 0 ]
+  grep -q 'ansible-playbook --syntax-check -i localhost, .*site.yml' "$SHIM_LOG"
+  [ "$(grep -c 'ansible-playbook' "$SHIM_LOG")" -eq 1 ]
+}
+
+@test "validate-reference installs ansible collections from requirements.yml" {
+  ansible_fixture
+  printf 'collections:\n  - name: ansible.posix\n' >"$AN/collections/requirements.yml"
+  run "$VALIDATE" an-01 --no-molecule
+  [ "$status" -eq 0 ]
+  grep -q 'ansible-galaxy collection install -r .*requirements.yml -p .*platform-practice/collections' "$SHIM_LOG"
+  grep -q 'ansible-playbook .*collections=.*platform-practice/collections' "$SHIM_LOG"
+}
+
+@test "validate-reference rejects terraform tests without mock_provider" {
+  vr_setup
+  command -v tflint >/dev/null || skip "tflint not on PATH"
+  command -v trivy >/dev/null || skip "trivy not on PATH"
+  printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nresource "terraform_data" "demo" {\n  input = "x"\n}\n' >"$VR_TF"
+  mkdir -p "$(dirname "$VR_TF")/tests"
+  printf 'run "plain" {\n  command = plan\n}\n' >"$(dirname "$VR_TF")/tests/plain.tftest.hcl"
+  run "$VALIDATE" vr-01 --no-molecule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has no mock_provider"* ]]
+}

@@ -13,24 +13,24 @@ selftest_fixture_env() {
   export LEARNER_IP=203.0.113.10 OWNER_TAG=learner
 }
 
-# _selftest_ids <track> <from> <to>: the task ids in range, one per line.
-_selftest_ids() {
-  local track=$1 from=$2 to=$3 id on=1 seen_from=0 seen_to=0
+# _selftest_select <track> <from> <to>: fills SELFTEST_IDS (main shell, so errors exit before any work).
+_selftest_select() {
+  local track=$1 from=$2 to=$3 id i=0 fi_=-1 ti=-1
+  local -a all=()
+  SELFTEST_IDS=()
   [[ -z "$track" || -d "$TRACKS_DIR/$track" ]] || die 2 "selftest: unknown track: $track"
-  [[ -z "$from" ]] || on=0
   while IFS= read -r id; do
-    if [[ -n "$from" && "$id" == "$from" ]]; then
-      on=1
-      seen_from=1
-    fi
-    [[ $on -eq 1 ]] && echo "$id"
-    if [[ -n "$to" && "$id" == "$to" ]]; then
-      seen_to=1
-      on=0
-    fi
+    all+=("$id")
+    [[ -n "$from" && "$id" == "$from" ]] && fi_=$i
+    [[ -n "$to" && "$id" == "$to" ]] && ti=$i
+    i=$((i + 1))
   done < <(task_ids "$track")
-  [[ -z "$from" || $seen_from -eq 1 ]] || die 2 "selftest: --from $from not found"
-  [[ -z "$to" || $seen_to -eq 1 ]] || die 2 "selftest: --to $to not found"
+  [[ -z "$from" || $fi_ -ge 0 ]] || die 2 "selftest: --from $from not found"
+  [[ -z "$to" || $ti -ge 0 ]] || die 2 "selftest: --to $to not found"
+  [[ $fi_ -ge 0 ]] || fi_=0
+  [[ $ti -ge 0 ]] || ti=$((${#all[@]} - 1))
+  [[ $ti -ge $fi_ ]] || die 2 "selftest: --to $to comes before --from $from"
+  for ((i = fi_; i <= ti; i++)); do SELFTEST_IDS+=("${all[i]}"); done
   return 0
 }
 
@@ -48,7 +48,7 @@ _selftest_grade() {
 
 # _selftest_offline_one <id> <work>: prints one table row; returns 1 on a violation.
 _selftest_offline_one() {
-  local id=$1 work=$2 d prev="" b a brc=0 arc=0 note="" n
+  local id=$1 work=$2 d b a brc=0 arc=0 note="" n
   local -a replay=()
   d="$(task_dir "$id")"
   if ! grep -Eq '^[[:space:]]*check_code[[:space:]]' "$d/checks.sh"; then
@@ -57,24 +57,21 @@ _selftest_offline_one() {
   fi
   mapfile -t replay < <(_replay_ids "$id")
   n=${#replay[@]}
-  [[ $n -ge 2 ]] && prev="${replay[n - 2]}"
 
   b="$work/before"
-  if [[ -n "$prev" ]]; then
-    (build_reference "$prev" "$b") || return 1
-  else
-    mkdir -p "$b/live"
-  fi
+  a="$work/after"
+  rm -rf "$b" "$a"
+  # before = exactly the replay without this task (the previous task's reference alone may differ)
+  (replay_into "$b" "${replay[@]:0:n-1}") || return 1
   _selftest_grade "$id" "$b/live" "$b/modules" "$work/before.log" || brc=$?
 
-  a="$work/after"
   (build_reference "$id" "$a") || return 1
   _selftest_grade "$id" "$a/live" "$a/modules" "$work/after.log" || arc=$?
 
   [[ $brc -eq 0 ]] && note="a check passes before the task"
   [[ $arc -ne 0 ]] && note="${note:+$note; }a check fails after the task"
-  printf '%-10s %-8s %-8s %s
-' "$id" "$([[ $brc -ne 0 ]] && echo fail || echo PASS)"     "$([[ $arc -eq 0 ]] && echo pass || echo FAIL)" "${note:-ok}"
+  printf '%-10s %-8s %-8s %s\n' "$id" "$([[ $brc -ne 0 ]] && echo fail || echo PASS)" \
+    "$([[ $arc -eq 0 ]] && echo pass || echo FAIL)" "${note:-ok}"
   if [[ $brc -eq 0 ]]; then
     sed 's/^/    before: /' "$work/before.log"
   fi
@@ -91,10 +88,11 @@ _selftest_offline() {
   # shellcheck disable=SC2064
   trap "rm -rf '$work'" EXIT
   printf '%-10s %-8s %-8s %s\n' id before after result
-  while IFS= read -r id; do
+  _selftest_select "$track" "$from" "$to"
+  for id in "${SELFTEST_IDS[@]}"; do
     count=$((count + 1))
     _selftest_offline_one "$id" "$work" || bad=$((bad + 1))
-  done < <(_selftest_ids "$track" "$from" "$to")
+  done
   [[ $count -gt 0 ]] || die 1 "selftest: no tasks selected"
   if [[ $bad -gt 0 ]]; then
     echo "selftest offline: $bad of $count task(s) violate the contract" >&2
@@ -109,7 +107,8 @@ _selftest_live() {
     die 8 "live selftest creates real Azure resources and costs money; set SELFTEST_I_HAVE_PERMISSION=1 to run it"
   load_config
   need az gh terraform git timeout
-  while IFS= read -r id; do
+  _selftest_select "$track" "$from" "$to"
+  for id in "${SELFTEST_IDS[@]}"; do
     d="$(task_dir "$id")"
     echo "== $id: setup"
     if [[ -f "$d/setup.sh" ]]; then
@@ -127,7 +126,7 @@ _selftest_live() {
     fi
     rm -rf "$GRADE_TMP"
     echo "== $id: ok"
-  done < <(_selftest_ids "$track" "$from" "$to")
+  done
   echo "selftest: all tasks ok"
 }
 

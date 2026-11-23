@@ -45,13 +45,13 @@ _apply_delete() {
   done <"$list"
 }
 
-# build_reference <id> <out>: replay overlays from an empty tree into <out>/live and <out>/modules.
-build_reference() {
-  local id=$1 out=$2 tid d
-  task_dir "$id" >/dev/null || die 2 "unknown task: $id"
+# replay_into <out> <ids...>: overlay the references of the given tasks, in order, from an empty tree.
+replay_into() {
+  local out=$1 tid d
+  shift
   rm -rf "$out"
   mkdir -p "$out/live"
-  while IFS= read -r tid; do
+  for tid in "$@"; do
     d="$(task_dir "$tid")/reference"
     [[ -d "$d" ]] || continue
     render_tree "$d/live" "$out/live"
@@ -60,7 +60,16 @@ build_reference() {
       render_tree "$d/modules" "$out/modules"
     fi
     _apply_delete "$d/.delete" "$out"
-  done < <(_replay_ids "$id")
+  done
+}
+
+# build_reference <id> <out>: replay overlays from an empty tree into <out>/live and <out>/modules.
+build_reference() {
+  local id=$1 out=$2
+  local -a ids=()
+  task_dir "$id" >/dev/null || die 2 "unknown task: $id"
+  mapfile -t ids < <(_replay_ids "$id")
+  replay_into "$out" "${ids[@]}"
 }
 
 _have_repo() { # _have_repo <dir>: a git repo with an origin remote

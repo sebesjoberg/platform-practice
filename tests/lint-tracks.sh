@@ -40,7 +40,8 @@ NAMING_PATTERNS=(
   '^budget-@P@-(monthly|payments)$'
 )
 # Banned SKU/service strings (reference/ files, task.md, solution.md).
-BANNED=(AzureFirewall Bastion VpnGw Premium azurerm_kubernetes_cluster azuread_)
+BANNED=(AzureFirewall Bastion VpnGw Premium azurerm_kubernetes_cluster azuread_
+  azurerm_bastion_host azurerm_firewall azurerm_application_gateway azurerm_virtual_network_gateway azurerm_lb)
 # ---------------------------------------------------------------------------------------
 
 P_RE='([a-z]{2,6}|\{P\}|\{\{PREFIX\}\})'
@@ -140,7 +141,7 @@ lint_task() {
     grep -Iq . "$f" 2>/dev/null || continue
     rel="${f#"$d"/}"
     for tok in "${BANNED[@]}"; do
-      if grep -v 'lint-allow: banned' "$f" | grep -qF -- "$tok"; then
+      if awk -v t="$tok" '!index($0, "lint-allow: banned") && index($0, t) {f=1} END {exit !f}' "$f"; then
         violation "$d" "banned string $tok in $rel"
       fi
     done
