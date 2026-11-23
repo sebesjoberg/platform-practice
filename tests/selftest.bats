@@ -241,6 +241,8 @@ TF
 ansible_fixture() {
   command -v awk >/dev/null
   export PATH="${PATH#"$REPO_ROOT"/tests/fakes:}"
+  export HOME="$TEST_TMP/home"
+  mkdir -p "$HOME"
   export TRACKS_DIR="$TEST_TMP/an"
   AN="$TRACKS_DIR/an/01-x/reference/live/ansible"
   mkdir -p "$AN/inventory" "$AN/collections"
@@ -282,6 +284,29 @@ ansible_fixture() {
   printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nresource "terraform_data" "demo" {\n  input = "x"\n}\n' >"$VR_TF"
   mkdir -p "$(dirname "$VR_TF")/tests"
   printf 'run "plain" {\n  command = plan\n}\n' >"$(dirname "$VR_TF")/tests/plain.tftest.hcl"
+  run "$VALIDATE" vr-01 --no-molecule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has no mock_provider"* ]]
+}
+
+@test "validate-reference rejects a commented-out mock_provider" {
+  vr_setup
+  command -v tflint >/dev/null || skip "tflint not on PATH"
+  command -v trivy >/dev/null || skip "trivy not on PATH"
+  printf 'terraform {
+  required_version = ">= 1.6"
+}
+
+resource "terraform_data" "demo" {
+  input = "x"
+}
+' >"$VR_TF"
+  mkdir -p "$(dirname "$VR_TF")/tests"
+  printf '# mock_provider "azurerm" {}
+run "plain" {
+  command = plan
+}
+' >"$(dirname "$VR_TF")/tests/plain.tftest.hcl"
   run "$VALIDATE" vr-01 --no-molecule
   [ "$status" -ne 0 ]
   [[ "$output" == *"has no mock_provider"* ]]

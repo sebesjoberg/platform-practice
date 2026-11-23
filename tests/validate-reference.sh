@@ -91,7 +91,7 @@ if [[ ${#tf_dirs[@]} -gt 0 ]]; then
       --ignorefile "$REPO/tests/trivy-ignore.yaml" .
     if [[ -d "$d/tests" ]] && compgen -G "$d/tests/*.tftest.hcl" >/dev/null; then
       for tf in "$d"/tests/*.tftest.hcl; do
-        if ! grep -q 'mock_provider' "$tf"; then
+        if ! grep -Eq '^[[:space:]]*mock_provider[[:space:]]+"' "$tf"; then
           echo "FAIL  test $r"
           echo "${tf#"$OUT"/} has no mock_provider; terraform test must never reach real providers"
           exit 1
