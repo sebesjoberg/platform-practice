@@ -27,3 +27,11 @@ misconfigurations:
       write secrets over the public endpoint before any runner inside the VNet exists. The data
       plane is RBAC only; the private endpoint pe-kv-<prefix>-<env> serves the VNets. The same
       exception is in the learner's modules repo (.trivyignore.yaml).
+  - id: AZU-0012
+    paths:
+      - "legacy.tf"
+    statement: >-
+      The click-ops storage account imported in tf-26 (landing-zone) is described as it was
+      found: public endpoint, default action Allow, shared keys on (the story's finance team
+      uploads with the account key). The lesson is the import with a clean plan; hardening is a
+      deliberate follow-up. Same exception in the learner's .trivyignore.yaml.
