@@ -1,0 +1,8 @@
+.superpowers/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl.bak
+.venv/
+*.swp

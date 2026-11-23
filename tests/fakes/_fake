@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Shared implementation for the fake az/gh/terraform wrappers.
+# Usage (from a wrapper): exec "$(dirname "$0")/_fake" <tool> "$@"
+#
+# Appends the invocation to $FAKE_LOG and answers from
+# $FAKE_DIR/<tool>/<joined-args>.out (stdout) and .rc (exit code).
+# No .rc means exit 0 when .out exists. No response file at all means
+# exit 1 with "fake: no response for <tool> <args>" on stderr.
+set -u
+
+tool=$1
+shift
+args="$*"
+
+if [[ -n "${FAKE_LOG:-}" ]]; then
+  printf '%s\n' "$tool${args:+ $args}" >>"$FAKE_LOG"
+fi
+
+base="${FAKE_DIR:-}/$tool/$args"
+
+if [[ -z "${FAKE_DIR:-}" || ( ! -e "$base.out" && ! -e "$base.rc" ) ]]; then
+  echo "fake: no response for $tool${args:+ $args}" >&2
+  exit 1
+fi
+
+[[ -e "$base.out" ]] && cat "$base.out"
+
+rc=0
+if [[ -e "$base.rc" ]]; then
+  rc=$(<"$base.rc")
+fi
+exit "$rc"
