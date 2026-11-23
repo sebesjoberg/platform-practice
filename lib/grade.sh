@@ -82,6 +82,10 @@ cmd_grade() {
     shift
   done
 
+  if [[ "$mode" != offline && -e "$LAB_HOME/paused" ]]; then
+    die 7 "lab is paused — ./lab.sh resume first"
+  fi
+
   if [[ $all -eq 1 ]]; then
     local regress=() tid
     while IFS= read -r tid; do
