@@ -1,0 +1,53 @@
+# {{ ansible_managed }} (role acme_hello)
+# `systemd-analyze security acme-hello.service` rates the hardening below.
+[Unit]
+Description=acme-hello demo app ({{ acme_hello_home }}/current)
+After=network.target
+
+[Service]
+Type=simple
+User={{ acme_hello_user }}
+Group={{ acme_hello_user }}
+SupplementaryGroups={{ acme_hello_config_group }}
+# Optional (-): without role app_env the app still starts, and its page says app.env missing.
+EnvironmentFile=-{{ acme_hello_env_file }}
+Environment=APP_ENV={{ acme_hello_env }} APP_PORT={{ acme_hello_port }}
+ExecStart=/usr/bin/python3 {{ acme_hello_home }}/current/acme_hello.py
+Restart=on-failure
+RestartSec=2
+
+# No privileges, no capabilities, a short list of system calls, localhost only.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+ProtectClock=yes
+ProtectHostname=yes
+UMask=0077
+{% if acme_hello_sandbox %}
+
+# File system and kernel sandboxing (needs mount namespaces).
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+---
+argument_specs:
+  main:
+    short_description: The acme-hello app as a hardened systemd service
+    options:
+      acme_hello_version:
+        type: str
+        description: Release to run, a directory under files/releases/.
+      acme_hello_port:
+        type: int
+        description: Port on 127.0.0.1.
+      acme_hello_env:
+        type: str
+        description: Environment shown on the page.
+      acme_hello_user:
+        type: str
+        description: System user the service runs as.
+      acme_hello_home:
+        type: path
+        description: Holds releases/<version>/ and the current symlink.
+      acme_hello_env_file:
+        type: path
+        description: Environment file (role app_env), optional for the unit.
+      acme_hello_config_group:
+        type: str
+        description: Group of the environment file; the service user joins it.
+      acme_hello_sandbox:
+        type: bool
+        description: Mount-namespace sandboxing in the unit. False only in unprivileged containers.
+      acme_hello_health_retries:
+        type: int
+        description: Health checks (2 s apart) before a deploy counts as failed.
