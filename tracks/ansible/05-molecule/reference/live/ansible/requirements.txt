@@ -1,0 +1,14 @@
+# Python packages for ansible/.venv: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# ansible-core 2.21 is the newest line that runs on Python 3.12 (WSL Ubuntu 24.04); 2.22 needs 3.13.
+# The Azure collection's own Python packages come from the installed collection:
+#   .venv/bin/pip install -r collections/ansible_collections/azure/azcollection/requirements.txt
+ansible-core==2.21.6
+
+# Linters, the same versions as the pre-commit hooks in .pre-commit-config.yaml
+ansible-lint==26.11.0
+yamllint==1.38.0
+pre-commit==4.7.0
+
+# Role tests in Docker containers (molecule-plugins[docker] brings the Docker SDK)
+molecule==26.11.0
+molecule-plugins[docker]==26.11.0
