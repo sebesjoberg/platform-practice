@@ -19,7 +19,7 @@ check_code "landing-zone validates prefix and location (swedencentral)" \
   "terraform/landing-zone needs variable \"prefix\" and variable \"location\", each with a validation block (location: swedencentral only)"
 
 check_code "landing-zone tags come from locals built on var.owner" \
-  'grep -rqsE "^[[:space:]]*locals[[:space:]]*\{" terraform/landing-zone --include="*.tf" && grep -rqsE "owner[[:space:]]*=[[:space:]]*var\.owner" terraform/landing-zone --include="*.tf" && grep -rqsE "managed_by[[:space:]]*=[[:space:]]*\"terraform\"" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "^[[:space:]]*locals[[:space:]]*\{" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "owner[[:space:]]*=[[:space:]]*var\.owner" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "managed_by[[:space:]]*=[[:space:]]*\"terraform\"" terraform/landing-zone --include="*.tf"' \
   "build the tags in a locals block with owner = var.owner, env and managed_by = \"terraform\""
 
 check "rg-$PREFIX-hub still has the required tags" \

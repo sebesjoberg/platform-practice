@@ -10,8 +10,8 @@ export TF14_IMPORT_RE='^[[:space:]]*import[[:space:]]*\{'
 export TF14_VNETS_JQ='[.resources[]? | select(.mode == "managed" and .type == "azurerm_virtual_network") | .instances[].attributes.name] == [$v]'
 
 tf14_has_key() { # tf14_has_key <stack> <key>
-  grep -rqsE "backend[[:space:]]+\"azurerm\"" "terraform/$1" --include="*.tf" &&
-    grep -rqsE "key[[:space:]]*=[[:space:]]*\"$2\"" "terraform/$1" --include="*.tf"
+  grep --exclude-dir=.terraform -rqsE "backend[[:space:]]+\"azurerm\"" "terraform/$1" --include="*.tf" &&
+    grep --exclude-dir=.terraform -rqsE "key[[:space:]]*=[[:space:]]*\"$2\"" "terraform/$1" --include="*.tf"
 }
 # tf14_state_vnets <key> <vnet>: the state blob <key> manages exactly the VNet <vnet>.
 tf14_state_vnets() { spoke_state_jq "$1" --arg v "$2" "$TF14_VNETS_JQ"; }
@@ -22,15 +22,15 @@ check_code "env-dev and env-prod have their own state keys" \
   "terraform/env-dev and terraform/env-prod need backend \"azurerm\" with key env-dev.tfstate / env-prod.tfstate (landing-zone keeps landing-zone.tfstate)"
 
 check_code "env stacks read the hub with data sources, not terraform_remote_state" \
-  '[[ -d terraform/env-dev && -d terraform/env-prod ]] && for s in env-dev env-prod; do grep -rqsE "data[[:space:]]+\"azurerm_virtual_network\"" "terraform/$s" --include="*.tf" || exit 1; done && ! grep -rqsE "terraform_remote_state" terraform/env-* --include="*.tf"' \
+  '[[ -d terraform/env-dev && -d terraform/env-prod ]] && for s in env-dev env-prod; do grep --exclude-dir=.terraform -rqsE "data[[:space:]]+\"azurerm_virtual_network\"" "terraform/$s" --include="*.tf" || exit 1; done && ! grep --exclude-dir=.terraform -rqsE "terraform_remote_state" terraform/env-* --include="*.tf"' \
   "terraform/env-dev and terraform/env-prod must find vnet-$PREFIX-hub with data \"azurerm_virtual_network\", and never use terraform_remote_state"
 
 check_code "landing-zone no longer declares the spokes" \
-  '[[ -d terraform/landing-zone ]] && ! grep -rqsE "resource[[:space:]]+\"azurerm_virtual_network_peering\"" terraform/landing-zone --include="*.tf"' \
+  '[[ -d terraform/landing-zone ]] && ! grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_virtual_network_peering\"" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone still declares peerings: the spokes (and both peering directions) belong to the env stacks now"
 
 check_code "the move is finished: no import blocks left in the env stacks" \
-  '[[ -d terraform/env-dev && -d terraform/env-prod ]] && ! grep -rqsE "$TF14_IMPORT_RE" terraform/env-dev terraform/env-prod --include="*.tf"' \
+  '[[ -d terraform/env-dev && -d terraform/env-prod ]] && ! grep --exclude-dir=.terraform -rqsE "$TF14_IMPORT_RE" terraform/env-dev terraform/env-prod --include="*.tf"' \
   "delete the import blocks once the move is applied (PR 2): an import of a missing object fails, which breaks ./lab.sh resume after a pause"
 
 check "state blobs landing-zone.tfstate, env-dev.tfstate and env-prod.tfstate exist" \

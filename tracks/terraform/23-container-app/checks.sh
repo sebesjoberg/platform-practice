@@ -18,11 +18,11 @@ export TF23_APP_JQ='def me: ascii_downcase | endswith(env.TF23_UAMI_SUFFIX);
   and .properties.configuration.ingress.external == true'
 
 check_code "env-dev declares a VNet-integrated Container Apps environment and the app" \
-  'grep -rqsE "^resource[[:space:]]+\"azurerm_container_app_environment\"" terraform/env-dev --include="*.tf" && grep -rqsE "^[[:space:]]*infrastructure_subnet_id[[:space:]]*=" terraform/env-dev --include="*.tf" && grep -rqsE "^resource[[:space:]]+\"azurerm_container_app\"" terraform/env-dev --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "^resource[[:space:]]+\"azurerm_container_app_environment\"" terraform/env-dev --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*infrastructure_subnet_id[[:space:]]*=" terraform/env-dev --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^resource[[:space:]]+\"azurerm_container_app\"" terraform/env-dev --include="*.tf"' \
   "terraform/env-dev needs azurerm_container_app_environment (with infrastructure_subnet_id = snet-aca) and azurerm_container_app"
 
 check_code "the app pulls with an identity and references a Key Vault secret" \
-  'grep -rqsE "^[[:space:]]*key_vault_secret_id[[:space:]]*=" terraform/env-dev --include="*.tf" && awk "/^[[:space:]]*registry[[:space:]]*\\{/ { r = 1 } r && /^[[:space:]]*identity[[:space:]]*=/ { f = 1 } r && /^[[:space:]]*\\}/ { r = 0 } END { exit !f }" $(find terraform/env-dev -name "*.tf")' \
+  'grep --exclude-dir=.terraform -rqsE "^[[:space:]]*key_vault_secret_id[[:space:]]*=" terraform/env-dev --include="*.tf" && awk "/^[[:space:]]*registry[[:space:]]*\\{/ { r = 1 } r && /^[[:space:]]*identity[[:space:]]*=/ { f = 1 } r && /^[[:space:]]*\\}/ { r = 0 } END { exit !f }" $(find terraform/env-dev -name "*.tf" -not -path "*/.terraform/*")' \
   "in azurerm_container_app: a registry block with identity = <the app identity ID> (no password) and a secret with key_vault_secret_id"
 
 check "$TF23_CAE is in snet-aca of vnet-$PREFIX-dev, with external ingress" \

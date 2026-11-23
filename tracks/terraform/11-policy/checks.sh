@@ -25,15 +25,15 @@ tf11_pid() { az identity show -g "rg-$PREFIX-tfstate" -n "id-$PREFIX-github-ci" 
 export -f tf11_probe tf11_pid
 
 check_code "bootstrap gives the CI identity Resource Policy Contributor" \
-  'grep -rqsE "Resource Policy Contributor|36243c78-bf99-498c-9df9-86d9f8d28608" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "Resource Policy Contributor|36243c78-bf99-498c-9df9-86d9f8d28608" terraform/bootstrap --include="*.tf"' \
   "terraform/bootstrap needs an azurerm_role_assignment of Resource Policy Contributor for the CI identity"
 
 check_code "landing-zone declares a custom policy definition and subscription assignments" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_policy_definition\"" terraform/landing-zone --include="*.tf" && grep -rqsE "resource[[:space:]]+\"azurerm_subscription_policy_assignment\"" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_policy_definition\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_subscription_policy_assignment\"" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone needs azurerm_policy_definition and azurerm_subscription_policy_assignment resources"
 
 check_code "landing-zone assigns the built-in Allowed locations" \
-  'grep -rqsE "e56962a6-4747-49cd-b67b-bf8b01975c4c|\"Allowed locations\"" terraform/landing-zone --include="*.tf" && grep -rqsF "listOfAllowedLocations" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "e56962a6-4747-49cd-b67b-bf8b01975c4c|\"Allowed locations\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsF "listOfAllowedLocations" terraform/landing-zone --include="*.tf"' \
   "assign the built-in Allowed locations (e56962a6-4747-49cd-b67b-bf8b01975c4c) with the parameter listOfAllowedLocations"
 
 check "CI identity holds Resource Policy Contributor on the subscription" \

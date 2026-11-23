@@ -47,8 +47,8 @@ tf31_vended() {
 # team_payments, from team-env at a release tag with a budget of 100, and no resources of its own.
 tf31_stack_ok() {
   local d=$TF31_STACK
-  grep -rqsE 'backend[[:space:]]+"azurerm"' "$d" --include='*.tf' &&
-    grep -rqsE 'key[[:space:]]*=[[:space:]]*"teams-payments\.tfstate"' "$d" --include='*.tf' &&
+  grep --exclude-dir=.terraform -rqsE 'backend[[:space:]]+"azurerm"' "$d" --include='*.tf' &&
+    grep --exclude-dir=.terraform -rqsE 'key[[:space:]]*=[[:space:]]*"teams-payments\.tfstate"' "$d" --include='*.tf' &&
     [[ "$(cat "$d"/*.tf | grep -cE '^[[:space:]]*module[[:space:]]+"')" -eq 1 ]] &&
     grep -qsE '^[[:space:]]*module[[:space:]]+"team_payments"' "$d"/*.tf &&
     grep -qsE "$TF31_SRC_RE" "$d"/*.tf &&

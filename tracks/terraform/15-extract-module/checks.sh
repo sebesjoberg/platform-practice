@@ -16,9 +16,9 @@ export TF15_STATE_JQ='[.resources[]? | select(.mode == "managed" and .type == "a
 tf15_calls_module() {
   local d="terraform/$1"
   [[ -d "$d" ]] &&
-    grep -rqsE "^module[[:space:]]+\"spoke\"" "$d" --include="*.tf" &&
-    grep -rqsE "$TF15_SOURCE_RE" "$d" --include="*.tf" &&
-    ! grep -rqsE "resource[[:space:]]+\"azurerm_virtual_network\"" "$d" --include="*.tf"
+    grep --exclude-dir=.terraform -rqsE "^module[[:space:]]+\"spoke\"" "$d" --include="*.tf" &&
+    grep --exclude-dir=.terraform -rqsE "$TF15_SOURCE_RE" "$d" --include="*.tf" &&
+    ! grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_virtual_network\"" "$d" --include="*.tf"
 }
 # tf15_discovery_skips_modules: run the repo's stacks.sh on a scratch tree in which both a stack
 # and a module have a backend block; the stack must be listed, the module never.
@@ -45,7 +45,7 @@ check_code "env-dev and env-prod call module \"spoke\" and declare no VNet thems
   "each env stack needs module \"spoke\" { source = \"../modules/spoke\" ... } and no azurerm_virtual_network resource of its own"
 
 check_code "moved blocks move the spoke into module.spoke in both env stacks" \
-  'for s in env-dev env-prod; do grep -rqsE "^[[:space:]]*moved[[:space:]]*\{" "terraform/$s" --include="*.tf" && grep -rqsE "$TF15_MOVED_RE" "terraform/$s" --include="*.tf" || exit 1; done' \
+  'for s in env-dev env-prod; do grep --exclude-dir=.terraform -rqsE "^[[:space:]]*moved[[:space:]]*\{" "terraform/$s" --include="*.tf" && grep --exclude-dir=.terraform -rqsE "$TF15_MOVED_RE" "terraform/$s" --include="*.tf" || exit 1; done' \
   "terraform/env-dev and terraform/env-prod need moved blocks, at least from azurerm_virtual_network.spoke to module.spoke.azurerm_virtual_network.<name> (keep them after the merge)"
 
 check_code "stack discovery never lists terraform/modules" \

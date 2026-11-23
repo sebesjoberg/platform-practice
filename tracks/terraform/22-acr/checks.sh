@@ -16,11 +16,11 @@ export ACR_HELLO_IMAGE
 export -f appenv_identity_pid role_on acr_name acr_hello_present
 
 check_code "the shared stack has its own state key and a Basic registry" \
-  'grep -rqsE "key[[:space:]]*=[[:space:]]*\"shared\.tfstate\"" terraform/shared --include="*.tf" && grep -rqsE "^resource[[:space:]]+\"azurerm_container_registry\"" terraform/shared --include="*.tf" && grep -rqsE "^[[:space:]]*sku[[:space:]]*=[[:space:]]*\"Basic\"" terraform/shared --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "key[[:space:]]*=[[:space:]]*\"shared\.tfstate\"" terraform/shared --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^resource[[:space:]]+\"azurerm_container_registry\"" terraform/shared --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*sku[[:space:]]*=[[:space:]]*\"Basic\"" terraform/shared --include="*.tf"' \
   "terraform/shared needs backend \"azurerm\" with key = \"shared.tfstate\" and an azurerm_container_registry with sku = \"Basic\""
 
 check_code "env-dev gives the app identity AcrPull on the shared registry" \
-  'grep -rqsE "Microsoft\.ContainerRegistry/registries/|^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-dev --include="*.tf" && grep -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-dev --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "Microsoft\.ContainerRegistry/registries/|^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-dev --include="*.tf" && grep --exclude-dir=.terraform -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-dev --include="*.tf"' \
   "in terraform/env-dev: an azurerm_role_assignment scoped to the registry acr$PREFIX$SUFFIX (its ID built from names, .../providers/Microsoft.ContainerRegistry/registries/acr$PREFIX$SUFFIX) with role_definition_name = \"AcrPull\" for the app identity"
 
 check "rg-$PREFIX-shared exists in $LOCATION with the required tags" \

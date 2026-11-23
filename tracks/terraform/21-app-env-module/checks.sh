@@ -33,11 +33,11 @@ check_code "CHANGELOG.md has a 2.1.0 entry for app-env" \
   "add a \"## 2.1.0\" entry to $MODULES_REPO/CHANGELOG.md that names the new app-env module"
 
 check_code "env-dev calls app-env from the modules repo by tag and purges vaults on destroy" \
-  'grep -rqsE "$TF21_SRC" terraform/env-dev --include="*.tf" && grep -rqsE "^[[:space:]]*purge_soft_delete_on_destroy[[:space:]]*=[[:space:]]*true" terraform/env-dev --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "$TF21_SRC" terraform/env-dev --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*purge_soft_delete_on_destroy[[:space:]]*=[[:space:]]*true" terraform/env-dev --include="*.tf"' \
   "terraform/env-dev needs module \"app_env\" with source \"git::https://github.com/$GH_OWNER/$MODULES_REPO.git//app-env?ref=v2.1.0\" and features { key_vault { purge_soft_delete_on_destroy = true } }"
 
 check_code "bootstrap lets CI assign Key Vault Secrets Officer" \
-  'grep -rqsiE "$TF21_OFFICER" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsiE "$TF21_OFFICER" terraform/bootstrap --include="*.tf"' \
   "add Key Vault Secrets Officer ($TF21_OFFICER) to the roles in the CI identity's RBAC Administrator condition in terraform/bootstrap"
 
 check_code "the plan job's trivy scan skips downloaded modules" \

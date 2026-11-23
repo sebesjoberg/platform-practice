@@ -22,10 +22,10 @@ export TF29_DIAG_JQ='[(.value? // .)[] | select((.workspaceId // "" | ascii_down
 # tf29_obs_stack: terraform/observability has its own state key and declares both resources.
 tf29_obs_stack() {
   local d=terraform/observability
-  grep -rqsE 'backend[[:space:]]+"azurerm"' "$d" --include='*.tf' &&
-    grep -rqsE 'key[[:space:]]*=[[:space:]]*"observability\.tfstate"' "$d" --include='*.tf' &&
-    grep -rqsE 'resource[[:space:]]+"azurerm_log_analytics_workspace"' "$d" --include='*.tf' &&
-    grep -rqsE 'resource[[:space:]]+"azurerm_monitor_diagnostic_setting"' "$d" --include='*.tf'
+  grep --exclude-dir=.terraform -rqsE 'backend[[:space:]]+"azurerm"' "$d" --include='*.tf' &&
+    grep --exclude-dir=.terraform -rqsE 'key[[:space:]]*=[[:space:]]*"observability\.tfstate"' "$d" --include='*.tf' &&
+    grep --exclude-dir=.terraform -rqsE 'resource[[:space:]]+"azurerm_log_analytics_workspace"' "$d" --include='*.tf' &&
+    grep --exclude-dir=.terraform -rqsE 'resource[[:space:]]+"azurerm_monitor_diagnostic_setting"' "$d" --include='*.tf'
 }
 # tf29_law_unchanged: the workspace still exists under the snapshotted resource ID (or the
 # name-built one), and its customerId is the recorded baseline when there is one.
@@ -45,11 +45,11 @@ check_code "observability has its own state key and owns the workspace and the A
   "terraform/observability needs backend \"azurerm\" with key = \"observability.tfstate\", azurerm_log_analytics_workspace and azurerm_monitor_diagnostic_setting"
 
 check_code "landing-zone no longer declares the workspace or the diagnostic setting" \
-  '[[ -d terraform/landing-zone ]] && ! grep -rqsE "$TF29_RES_RE" terraform/landing-zone --include="*.tf"' \
+  '[[ -d terraform/landing-zone ]] && ! grep --exclude-dir=.terraform -rqsE "$TF29_RES_RE" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone still declares azurerm_log_analytics_workspace or azurerm_monitor_diagnostic_setting: they belong to observability now"
 
 check_code "the move is finished: no import or removed blocks left" \
-  'tf29_obs_stack && ! grep -rqsE "$TF29_BLOCK_RE" terraform/landing-zone terraform/observability --include="*.tf"' \
+  'tf29_obs_stack && ! grep --exclude-dir=.terraform -rqsE "$TF29_BLOCK_RE" terraform/landing-zone terraform/observability --include="*.tf"' \
   "delete the removed and import blocks once the move is applied (PR 2): an import of a missing object fails every rebuild"
 
 check "$TF29_LAW has the same resource ID and customerId as before the move" \

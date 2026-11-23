@@ -1,11 +1,11 @@
 # tf-03 checks (sourced by the grader; cwd = LIVE_DIR)
 
 check_code "bootstrap uses the azurerm backend with Entra ID auth" \
-  'grep -rqsE "backend[[:space:]]+\"azurerm\"" terraform/bootstrap --include="*.tf" && grep -rqsE "use_azuread_auth[[:space:]]*=[[:space:]]*true" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "backend[[:space:]]+\"azurerm\"" terraform/bootstrap --include="*.tf" && grep --exclude-dir=.terraform -rqsE "use_azuread_auth[[:space:]]*=[[:space:]]*true" terraform/bootstrap --include="*.tf"' \
   "terraform/bootstrap needs backend \"azurerm\" with use_azuread_auth = true"
 
 check_code "backend points at st${PREFIX}tfstate$SUFFIX / tfstate / bootstrap.tfstate" \
-  'grep -rqsE "storage_account_name[[:space:]]*=[[:space:]]*\"st${PREFIX}tfstate$SUFFIX\"" terraform/bootstrap --include="*.tf" && grep -rqsE "container_name[[:space:]]*=[[:space:]]*\"tfstate\"" terraform/bootstrap --include="*.tf" && grep -rqsE "key[[:space:]]*=[[:space:]]*\"bootstrap\.tfstate\"" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "storage_account_name[[:space:]]*=[[:space:]]*\"st${PREFIX}tfstate$SUFFIX\"" terraform/bootstrap --include="*.tf" && grep --exclude-dir=.terraform -rqsE "container_name[[:space:]]*=[[:space:]]*\"tfstate\"" terraform/bootstrap --include="*.tf" && grep --exclude-dir=.terraform -rqsE "key[[:space:]]*=[[:space:]]*\"bootstrap\.tfstate\"" terraform/bootstrap --include="*.tf"' \
   "backend must use storage_account_name st${PREFIX}tfstate$SUFFIX, container_name tfstate, key bootstrap.tfstate"
 
 check "blob bootstrap.tfstate exists in the tfstate container" \

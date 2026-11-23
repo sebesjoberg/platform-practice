@@ -16,11 +16,11 @@ check_code "the modules repo holds the spoke module with its tests and README" \
   "expected the module in $MODULES_DIR/spoke (the .tf files, tests/ and README.md, moved from terraform/modules/spoke)"
 
 check_code "env-dev and env-prod use the spoke module from the modules repo by tag" \
-  'for s in env-dev env-prod; do grep -rqsE "$TF19_SOURCE_RE" "terraform/$s" --include="*.tf" || exit 1; done' \
+  'for s in env-dev env-prod; do grep --exclude-dir=.terraform -rqsE "$TF19_SOURCE_RE" "terraform/$s" --include="*.tf" || exit 1; done' \
   "each env stack needs source = \"git::https://github.com/$GH_OWNER/$MODULES_REPO.git//spoke?ref=v1.0.0\""
 
 check_code "no local module sources and no terraform/modules left in the live repo" \
-  '! grep -rqsE "$TF19_LOCAL_RE" terraform --include="*.tf" && [[ -z "$(find terraform/modules -name "*.tf" 2>/dev/null)" ]]' \
+  '! grep --exclude-dir=.terraform -rqsE "$TF19_LOCAL_RE" terraform --include="*.tf" && [[ -z "$(find terraform/modules -name "*.tf" 2>/dev/null)" ]]' \
   "delete terraform/modules/spoke from $LIVE_REPO and replace every source = \"../modules/...\" with the modules repo source"
 
 check_code "the modules repo's CI runs terraform test" \

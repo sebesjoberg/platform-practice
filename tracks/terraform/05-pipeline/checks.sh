@@ -18,11 +18,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
 export -f ci_job ci_job_ids ci_plan_independent
 
 check_code "landing-zone stack has its own state key" \
-  'grep -rqsE "backend[[:space:]]+\"azurerm\"" terraform/landing-zone --include="*.tf" && grep -rqsE "key[[:space:]]*=[[:space:]]*\"landing-zone\.tfstate\"" terraform/landing-zone --include="*.tf" && grep -rqsE "use_azuread_auth[[:space:]]*=[[:space:]]*true" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "backend[[:space:]]+\"azurerm\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "key[[:space:]]*=[[:space:]]*\"landing-zone\.tfstate\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "use_azuread_auth[[:space:]]*=[[:space:]]*true" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone needs backend \"azurerm\" with key = \"landing-zone.tfstate\" and use_azuread_auth = true"
 
 check_code "landing-zone declares a resource group" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_resource_group\"" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_resource_group\"" terraform/landing-zone --include="*.tf"' \
   "no azurerm_resource_group in terraform/landing-zone"
 
 check_code "workflow has push, pull_request and workflow_dispatch with input stacks" \

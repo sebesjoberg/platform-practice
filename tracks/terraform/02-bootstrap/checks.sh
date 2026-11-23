@@ -7,15 +7,15 @@ export TF02_BLOB_JQ='.isVersioningEnabled == true and .deleteRetentionPolicy.ena
 
 # tf-30 moves every stack to azurerm 5.x: the pin is ~> 4.x before it, ~> 5.x after.
 check_code "bootstrap pins required_version and azurerm ~> 4.x (5.x from tf-30)" \
-  'grep -rqsE "required_version[[:space:]]*=" terraform/bootstrap --include="*.tf" && grep -rqsE "version[[:space:]]*=[[:space:]]*\"~>[[:space:]]*[45]\.[0-9]+" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "required_version[[:space:]]*=" terraform/bootstrap --include="*.tf" && grep --exclude-dir=.terraform -rqsE "version[[:space:]]*=[[:space:]]*\"~>[[:space:]]*[45]\.[0-9]+" terraform/bootstrap --include="*.tf"' \
   "terraform/bootstrap needs required_version and an azurerm version constraint \"~> 4.81\" (\"~> 5.14\" from tf-30)"
 
 check_code "bootstrap provider sets subscription_id" \
-  'grep -rqsE "subscription_id[[:space:]]*=" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "subscription_id[[:space:]]*=" terraform/bootstrap --include="*.tf"' \
   "the azurerm provider block in terraform/bootstrap must set subscription_id"
 
 check_code "storage account is declared with shared key access disabled" \
-  'grep -rqsE "shared_access_key_enabled[[:space:]]*=[[:space:]]*false" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "shared_access_key_enabled[[:space:]]*=[[:space:]]*false" terraform/bootstrap --include="*.tf"' \
   "no shared_access_key_enabled = false in terraform/bootstrap"
 
 check "$TF02_RG exists in $LOCATION with the required tags" \

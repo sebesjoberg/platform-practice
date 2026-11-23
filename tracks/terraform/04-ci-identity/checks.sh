@@ -25,15 +25,15 @@ tf04_pid() { az identity show -g "$TF04_RG" -n "$TF04_ID" --query principalId -o
 export -f tf04_sub_prefix tf04_pid
 
 check_code "CI identity is declared in bootstrap" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_user_assigned_identity\"" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_user_assigned_identity\"" terraform/bootstrap --include="*.tf"' \
   "no azurerm_user_assigned_identity in terraform/bootstrap"
 
 check_code "federated identity credentials are declared in bootstrap" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_federated_identity_credential\"" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_federated_identity_credential\"" terraform/bootstrap --include="*.tf"' \
   "no azurerm_federated_identity_credential in terraform/bootstrap"
 
 check_code "RBAC Administrator assignment with a version 2.0 condition is declared" \
-  'grep -rqsE "Role Based Access Control Administrator|f58310d9-a9f6-439a-9e8d-f62e7b41a168" terraform/bootstrap --include="*.tf" && grep -rqsE "condition_version[[:space:]]*=[[:space:]]*\"2\.0\"" terraform/bootstrap --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "Role Based Access Control Administrator|f58310d9-a9f6-439a-9e8d-f62e7b41a168" terraform/bootstrap --include="*.tf" && grep --exclude-dir=.terraform -rqsE "condition_version[[:space:]]*=[[:space:]]*\"2\.0\"" terraform/bootstrap --include="*.tf"' \
   "terraform/bootstrap needs a Role Based Access Control Administrator assignment with condition_version = \"2.0\""
 
 check "$TF04_ID exists in $TF04_RG ($LOCATION)" \

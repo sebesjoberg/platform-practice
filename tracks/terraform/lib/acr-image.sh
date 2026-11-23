@@ -12,7 +12,7 @@ acr_name() { echo "acr$PREFIX$SUFFIX"; }
 
 # acr_hello_needed <live dir>: the live tree runs the image (a container app, tf-23 on).
 acr_hello_needed() {
-  grep -rqsE '/hello:1\.0"' "$1/terraform" --include='*.tf'
+  grep --exclude-dir=.terraform -rqsE '/hello:1\.0"' "$1/terraform" --include='*.tf'
 }
 
 # acr_ready: the registry exists and is provisioned.

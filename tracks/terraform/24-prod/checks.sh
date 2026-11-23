@@ -38,11 +38,11 @@ export -f tf24_change_gate
 export -f appenv_kv_name appenv_kv_id appenv_kv_ok appenv_pe_ok appenv_identity_pid role_on ci_job ci_job_ids ci_plan_independent tf24_prod_job
 
 check_code "env-prod uses spoke v2 (vnet_cidr) and app-env from the modules repo" \
-  'grep -rqsE "${TF24_MOD}spoke\?ref=v[2-9][0-9]*\.[0-9]+\.[0-9]+\"" terraform/env-prod --include="*.tf" && grep -rqsE "^[[:space:]]*vnet_cidr[[:space:]]*=" terraform/env-prod --include="*.tf" && grep -rqsE "${TF24_MOD}app-env\?ref=v[0-9]+\.[0-9]+\.[0-9]+\"" terraform/env-prod --include="*.tf" && grep -rqsE "^[[:space:]]*purge_soft_delete_on_destroy[[:space:]]*=[[:space:]]*true" terraform/env-prod --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "${TF24_MOD}spoke\?ref=v[2-9][0-9]*\.[0-9]+\.[0-9]+\"" terraform/env-prod --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*vnet_cidr[[:space:]]*=" terraform/env-prod --include="*.tf" && grep --exclude-dir=.terraform -rqsE "${TF24_MOD}app-env\?ref=v[0-9]+\.[0-9]+\.[0-9]+\"" terraform/env-prod --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*purge_soft_delete_on_destroy[[:space:]]*=[[:space:]]*true" terraform/env-prod --include="*.tf"' \
   "terraform/env-prod needs spoke ?ref=v2.0.0 with vnet_cidr, module \"app_env\" from //app-env?ref=v2.1.0 and features { key_vault { purge_soft_delete_on_destroy = true } }, like env-dev"
 
 check_code "env-prod gives its app identity AcrPull on the shared registry" \
-  'grep -rqsE "Microsoft\.ContainerRegistry/registries/|^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-prod --include="*.tf" && grep -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-prod --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "Microsoft\.ContainerRegistry/registries/|^data[[:space:]]+\"azurerm_container_registry\"" terraform/env-prod --include="*.tf" && grep --exclude-dir=.terraform -rqsE "role_definition_name[[:space:]]*=[[:space:]]*\"AcrPull\"" terraform/env-prod --include="*.tf"' \
   "in terraform/env-prod: AcrPull on the registry (ID built from names, as in env-dev) for module.app_env's identity, as in env-dev"
 
 check_code "a job in the prod environment applies env-prod after apply, and apply skips it" \

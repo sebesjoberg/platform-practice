@@ -6,11 +6,11 @@ export TF13_LAW_JQ='.location == env.LOCATION and .sku.name == "PerGB2018" and .
 export TF13_DIAG_JQ='[(.value? // .)[] | select((.workspaceId // "" | ascii_downcase) == (env.TF13_LAW_ID | ascii_downcase)) | [.logs[]? | select(.enabled) | .category]] | any(contains(["Administrative", "Security", "Policy"]))'
 
 check_code "a Log Analytics workspace with a 0.1 GB daily cap is declared" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_log_analytics_workspace\"" terraform --include="*.tf" && grep -rqsE "daily_quota_gb[[:space:]]*=[[:space:]]*0?\.1([^0-9]|$)" terraform --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_log_analytics_workspace\"" terraform --include="*.tf" && grep --exclude-dir=.terraform -rqsE "daily_quota_gb[[:space:]]*=[[:space:]]*0?\.1([^0-9]|$)" terraform --include="*.tf"' \
   "declare azurerm_log_analytics_workspace with daily_quota_gb = 0.1"
 
 check_code "a diagnostic setting is declared (Activity Log export)" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_monitor_diagnostic_setting\"" terraform --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_monitor_diagnostic_setting\"" terraform --include="*.tf"' \
   "declare an azurerm_monitor_diagnostic_setting on the subscription that sends the Activity Log to the workspace"
 
 check "law-$PREFIX-platform: PerGB2018, 30 days, 0.1 GB/day cap" \

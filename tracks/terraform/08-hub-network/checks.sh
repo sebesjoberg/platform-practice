@@ -7,11 +7,11 @@ export TF08_SUBNETS_JQ='def sn($n; $p; $g): any(.[]; .name == $n and (.addressPr
 export TF08_NSG_TAGS_JQ='[.[] | select(.name | test("^nsg-" + env.PREFIX + "-hub-(shared|runner|pe)$"))] | length == 3 and all(.[]; .location == env.LOCATION and .tags.env == "hub" and .tags.owner == env.OWNER_TAG)'
 
 check_code "hub VNet and subnets are declared in landing-zone" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_virtual_network\"" terraform/landing-zone --include="*.tf" && grep -rqsE "resource[[:space:]]+\"azurerm_subnet\"" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_virtual_network\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_subnet\"" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone needs an azurerm_virtual_network and azurerm_subnet resources"
 
 check_code "NSGs and subnet associations are declared in landing-zone" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_network_security_group\"" terraform/landing-zone --include="*.tf" && grep -rqsE "resource[[:space:]]+\"azurerm_subnet_network_security_group_association\"" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_network_security_group\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_subnet_network_security_group_association\"" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone needs azurerm_network_security_group and azurerm_subnet_network_security_group_association resources"
 
 check "$TF08_VNET has address space 10.0.0.0/16" \

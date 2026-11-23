@@ -63,7 +63,7 @@ check_code "CHANGELOG.md has a 2.2.0 entry for linux-vm" \
   "add a \"## 2.2.0\" entry to $MODULES_REPO/CHANGELOG.md that names the new linux-vm module"
 
 check_code "shared and env-dev build their VMs with linux-vm by tag; shared opens SSH in an NSG rule" \
-  'grep -rqsE "$TF25_SRC" terraform/shared --include="*.tf" && grep -rqsE "$TF25_SRC" terraform/env-dev --include="*.tf" && grep -rqsE "^resource[[:space:]]+\"azurerm_network_security_rule\"" terraform --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "$TF25_SRC" terraform/shared --include="*.tf" && grep --exclude-dir=.terraform -rqsE "$TF25_SRC" terraform/env-dev --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^resource[[:space:]]+\"azurerm_network_security_rule\"" terraform --include="*.tf"' \
   "terraform/shared (jump) and terraform/env-dev (web) need module sources \"git::https://github.com/$GH_OWNER/$MODULES_REPO.git//linux-vm?ref=v2.2.0\", plus an azurerm_network_security_rule for SSH on nsg-$PREFIX-hub-runner"
 
 check_code "learner_ip is a sensitive variable; the workflow passes the LEARNER_IP secret and the SSH_PUBLIC_KEY variable" \
@@ -71,7 +71,7 @@ check_code "learner_ip is a sensitive variable; the workflow passes the LEARNER_
   "declare variable \"learner_ip\" with sensitive = true and no default, and set TF_VAR_learner_ip: \${{ secrets.LEARNER_IP }} and TF_VAR_ssh_public_key: \${{ vars.SSH_PUBLIC_KEY }} in the workflow env"
 
 check_code "outputs jump_public_ip and web_private_ips; no private key in the repo" \
-  'grep -rqsE "^output[[:space:]]+\"jump_public_ip\"" terraform/shared --include="*.tf" && grep -rqsE "^output[[:space:]]+\"web_private_ips\"" terraform/env-dev --include="*.tf" && ! grep -rqsIlE "BEGIN (OPENSSH|RSA|EC|DSA)? ?PRIVATE KEY" --exclude-dir=.git --exclude-dir=.terraform .' \
+  'grep --exclude-dir=.terraform -rqsE "^output[[:space:]]+\"jump_public_ip\"" terraform/shared --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^output[[:space:]]+\"web_private_ips\"" terraform/env-dev --include="*.tf" && ! grep --exclude-dir=.terraform -rqsIlE "BEGIN (OPENSSH|RSA|EC|DSA)? ?PRIVATE KEY" --exclude-dir=.git --exclude-dir=.terraform .' \
   "add output \"jump_public_ip\" to terraform/shared and output \"web_private_ips\" to terraform/env-dev; a private key must never be committed (it stays in ~/.ssh/${PREFIX}_lab)"
 
 check "tag v2.2.0 in $TF25_MODS contains linux-vm" \

@@ -415,14 +415,25 @@ MT='source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh"'
 
 # ci_case <pr runs json> <main runs json>: runs ci_pr_green_or_caught_up against a gh stub that
 # applies the --jq filter to the canned API answer.
+# Every run's plan job ran its Terraform steps unless SKIPPED_RUNS lists its id (tf-24's change
+# filter skips them for PRs without Terraform changes).
 ci_case() {
-  PR_JSON=$1 MAIN_JSON=$2 run bash -c '
-    gh() { case "$2" in *event=pull_request*) jq -c "$4" <<<"$PR_JSON" ;; *) jq -c "$4" <<<"$MAIN_JSON" ;; esac; }
+  PR_JSON=$1 MAIN_JSON=$2 SKIPPED_RUNS=${3:-} run bash -c '
+    planned='"'"'{"jobs":[{"name":"plan","steps":[{"name":"terraform fmt","conclusion":"success"}]}]}'"'"'
+    skipped='"'"'{"jobs":[{"name":"plan","steps":[{"name":"terraform fmt","conclusion":"skipped"}]}]}'"'"'
+    gh() {
+      case "$2" in
+        */jobs*) local id=${2%/jobs*}; id=${id##*/}
+          if [[ " $SKIPPED_RUNS " == *" $id "* ]]; then jq -c "$4" <<<"$skipped"; else jq -c "$4" <<<"$planned"; fi ;;
+        *event=pull_request*) jq -r "$4" <<<"$PR_JSON" ;;
+        *) jq -c "$4" <<<"$MAIN_JSON" ;;
+      esac
+    }
     source "$REPO_ROOT/tracks/terraform/lib/ci-runs.sh"
     ci_pr_green_or_caught_up learner/acme-platform'
 }
-run_json() { # run_json <conclusion> <created_at> [message]
-  printf '{"workflow_runs":[{"conclusion":"%s","created_at":"%s","head_commit":{"message":"%s"}}]}' "$1" "$2" "${3:-x}"
+run_json() { # run_json <conclusion> <created_at> [message] [id]
+  printf '{"workflow_runs":[{"id":%s,"conclusion":"%s","created_at":"%s","head_commit":{"message":"%s"}}]}' "${4:-1}" "$1" "$2" "${3:-x}"
 }
 
 @test "ci check passes on a green PR run" {
@@ -443,5 +454,47 @@ run_json() { # run_json <conclusion> <created_at> [message]
   ci_case "$(run_json failure 2026-11-23T12:00:00Z)" "$(run_json success 2026-11-23T11:00:00Z 'catchup: tf-18')"
   [ "$status" -ne 0 ]
   ci_case "$(run_json failure 2026-11-23T10:00:00Z)" "$(run_json failure 2026-11-23T11:00:00Z 'catchup: tf-18')"
+  [ "$status" -ne 0 ]
+}
+
+@test "ci check ignores green PR runs that skipped their Terraform steps (tf-24 change filter)" {
+  prs='{"workflow_runs":[{"id":9,"conclusion":"success","created_at":"2026-11-23T12:00:00Z"},{"id":8,"conclusion":"failure","created_at":"2026-11-23T10:00:00Z"}]}'
+  ci_case "$prs" "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #7')" "9"
+  [ "$status" -ne 0 ]
+  ci_case "$prs" "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #7')"
+  [ "$status" -eq 0 ]
+}
+
+# --- ci_main_green / ci_applied_since: only runs whose apply job ran count ----------------------
+main_case() { # main_case <runs json> <jobs per run: "id:conclusion ..."> <function call>
+  RUNS_JSON=$1 APPLY=$2 run bash -c '
+    gh() {
+      case "$2" in
+        */jobs*) local id c=none a; id=${2%/jobs*}; id=${id##*/}
+          for a in $APPLY; do [[ "${a%%:*}" == "$id" ]] && c=${a#*:}; done
+          jq -r "$4" <<<"{\"jobs\":[{\"name\":\"apply\",\"conclusion\":\"$c\"}]}" ;;
+        *) jq -r "$4" <<<"$RUNS_JSON" ;;
+      esac
+    }
+    source "$REPO_ROOT/tracks/terraform/lib/ci-runs.sh"
+    '"$3"
+}
+
+@test "ci_main_green skips green runs without an apply and judges the newest one that applied" {
+  runs='{"workflow_runs":[{"id":3,"conclusion":"success"},{"id":2,"conclusion":"success"},{"id":1,"conclusion":"failure"}]}'
+  main_case "$runs" "3:skipped 2:success 1:failure" "ci_main_green o/r"
+  [ "$status" -eq 0 ]
+  main_case "$runs" "3:skipped 2:skipped 1:failure" "ci_main_green o/r"
+  [ "$status" -ne 0 ]
+  runs='{"workflow_runs":[{"id":3,"conclusion":"failure"},{"id":2,"conclusion":"success"}]}'
+  main_case "$runs" "3:skipped 2:success" "ci_main_green o/r"
+  [ "$status" -ne 0 ]
+}
+
+@test "ci_applied_since wants a green run whose apply job ran" {
+  runs='{"workflow_runs":[{"id":5},{"id":4}]}'
+  main_case "$runs" "5:skipped 4:success" "ci_applied_since o/r 0"
+  [ "$status" -eq 0 ]
+  main_case "$runs" "5:skipped 4:skipped" "ci_applied_since o/r 0"
   [ "$status" -ne 0 ]
 }

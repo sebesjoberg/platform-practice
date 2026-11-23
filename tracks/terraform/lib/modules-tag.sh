@@ -110,7 +110,7 @@ modules_tag() {
 # repo, by exact tag. A pinned tag missing from module-releases.txt fails loudly.
 modules_tag_pinned() {
   local refs ref rc=0
-  refs="$(grep -rhoE "git::https://github\.com/$GH_OWNER/$MODULES_REPO\.git//[^?\"]+\?ref=[^\"]+" terraform --include='*.tf' |
+  refs="$(grep --exclude-dir=.terraform -rhoE "git::https://github\.com/$GH_OWNER/$MODULES_REPO\.git//[^?\"]+\?ref=[^\"]+" terraform --include='*.tf' |
     sed -E 's/.*\?ref=//' | sort -u || true)"
   for ref in $refs; do
     modules_tag "$ref" || rc=1

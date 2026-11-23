@@ -29,6 +29,13 @@ Traps:
   Remove what nobody owns, and write down who decides about it next time.
 - **The policy from tf-11 saw it too.** Nobody could *remove* the owner tag: the deny policy
   blocks any update that leaves an `rg-*` group without one. Changing its value was allowed.
+- **Going further: bootstrap is blind to drift.yml.** `stacks.sh` skips `terraform/bootstrap`
+  on purpose (CI never manages its own identity and RBAC), so nobody notices if someone widens
+  CI's role assignments or its federated credentials by hand. A platform team covers it with a
+  separate read-only check: a scheduled job under a different, reader-only identity that runs
+  `terraform plan` on bootstrap, or an Azure Policy / activity-log alert on role assignment
+  writes at subscription scope. In the lab you run `terraform plan` in `terraform/bootstrap`
+  yourself now and then.
 - **While the lab is paused** every env stack plans as "create everything". `./lab.sh pause`
   disables `drift.yml` and `./lab.sh resume` enables it again, so you don't wake up to drift
   issues about stacks you destroyed on purpose.

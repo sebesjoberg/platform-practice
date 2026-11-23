@@ -8,7 +8,7 @@ export TF12_ENV_AWK='/^[[:space:]]*TF_VAR_budget_email:[[:space:]]*"?\$\{\{[[:sp
 export TF12_BUDGET_JQ='def n($t; $k): any(.properties.notifications[]; .enabled and .threshold == $t and .thresholdType == $k and any(.contactGroups[]?; ascii_downcase == (env.TF12_AG_ID | ascii_downcase))); .properties.amount == 300 and .properties.timeGrain == "Monthly" and n(80; "Actual") and n(100; "Forecasted")'
 
 check_code "landing-zone declares the budget and its action group" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_consumption_budget_subscription\"" terraform --include="*.tf" && grep -rqsE "resource[[:space:]]+\"azurerm_monitor_action_group\"" terraform --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_consumption_budget_subscription\"" terraform --include="*.tf" && grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_monitor_action_group\"" terraform --include="*.tf"' \
   "declare azurerm_consumption_budget_subscription and azurerm_monitor_action_group in terraform/landing-zone"
 
 check_code "the budget email is a sensitive variable, not a literal" \

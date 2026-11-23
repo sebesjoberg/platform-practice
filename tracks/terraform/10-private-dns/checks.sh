@@ -6,11 +6,11 @@ export TF10_VNET_BASE="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/rg-$PREFIX
 export TF10_LINKS_JQ='def want($v): {name: ("link-vnet-" + env.PREFIX + "-" + $v), vnet: ((env.TF10_VNET_BASE + "-" + $v + "/providers/Microsoft.Network/virtualNetworks/vnet-" + env.PREFIX + "-" + $v) | ascii_downcase), reg: false}; ([want("hub"), want("dev"), want("prod")] - [.[] | {name, vnet: (.virtualNetwork.id | ascii_downcase), reg: .registrationEnabled}]) == []'
 
 check_code "landing-zone declares both private DNS zones" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_private_dns_zone\"" terraform/landing-zone --include="*.tf" && grep -rqsF "privatelink.vaultcore.azure.net" terraform/landing-zone --include="*.tf" && grep -rqsF "privatelink.blob.core.windows.net" terraform/landing-zone --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_private_dns_zone\"" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsF "privatelink.vaultcore.azure.net" terraform/landing-zone --include="*.tf" && grep --exclude-dir=.terraform -rqsF "privatelink.blob.core.windows.net" terraform/landing-zone --include="*.tf"' \
   "terraform/landing-zone needs azurerm_private_dns_zone for privatelink.vaultcore.azure.net and privatelink.blob.core.windows.net"
 
 check_code "private DNS zone VNet links are declared" \
-  'grep -rqsE "resource[[:space:]]+\"azurerm_private_dns_zone_virtual_network_link\"" terraform --include="*.tf"' \
+  'grep --exclude-dir=.terraform -rqsE "resource[[:space:]]+\"azurerm_private_dns_zone_virtual_network_link\"" terraform --include="*.tf"' \
   "no azurerm_private_dns_zone_virtual_network_link under terraform/"
 
 check "both private DNS zones exist in $TF10_RG" \
