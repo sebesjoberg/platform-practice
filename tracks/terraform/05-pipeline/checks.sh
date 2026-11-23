@@ -3,6 +3,8 @@
 export TF05_WF=.github/workflows/terraform.yml TF05_REPO="$GH_OWNER/$LIVE_REPO"
 export TF05_TAGS_JQ='.location == env.LOCATION and .tags.owner == env.OWNER_TAG and .tags.env == "hub" and .tags.managed_by == "terraform"'
 export TF05_VARS_JQ='(map({(.name): .value}) | add // {}) as $v | $v.AZURE_SUBSCRIPTION_ID == env.SUBSCRIPTION_ID and $v.AZURE_TENANT_ID == env.TENANT_ID and $v.AZURE_CLIENT_ID == env.TF05_CLIENT_ID'
+export TF05_TODO_RE='^[[:space:]]*# TODO\(tf-05\)'
+export TF05_HIDDEN_RE='echo[[:space:]]+"?list=\$\('
 export TF05_COMMENT_JQ='.[] | select(.user.login == "github-actions[bot]" and ((.body // "") | contains("Terraform plan"))) | .id'
 # Job ids directly under jobs: (at the indent of the first one), one per line.
 export TF05_JOBS_AWK='/^jobs:/ { j = 1; next } j && /^[^[:space:]#]/ { j = 0 } j && /^[[:space:]]+[A-Za-z0-9_-]+:/ { match($0, /^[[:space:]]+/); if (!ind) ind = RLENGTH; if (RLENGTH == ind) { k = $0; sub(/^[[:space:]]+/, "", k); sub(/:.*/, "", k); print k } }'
@@ -28,8 +30,12 @@ check_code "stack discovery finds landing-zone and skips bootstrap" \
   ".github/scripts/stacks.sh all must list landing-zone and never bootstrap"
 
 check_code "the starter's TODO(tf-05) parts are done" \
-  '[[ -f "$TF05_WF" ]] && ! grep -q "TODO(tf-05)" "$TF05_WF"' \
-  "$TF05_WF still contains TODO(tf-05) markers"
+  '[[ -f "$TF05_WF" ]] && ! grep -qE "$TF05_TODO_RE" "$TF05_WF"' \
+  "$TF05_WF still contains # TODO(tf-05) marker lines"
+
+check_code "stack discovery errors are not hidden behind echo" \
+  '[[ -f "$TF05_WF" ]] && ! grep -qE "$TF05_HIDDEN_RE" "$TF05_WF"' \
+  "run stacks.sh on its own line (list=\"\$(bash .github/scripts/stacks.sh ...)\"), not inside echo \"list=\$(...)\": echo returns 0 and hides failures"
 
 check_code "workflow logs in with OIDC and holds no client secret" \
   '[[ -f "$TF05_WF" ]] && grep -qE "id-token:[[:space:]]*write" "$TF05_WF" && grep -qE "azure/login@v2" "$TF05_WF" && grep -qE "ARM_USE_OIDC:[[:space:]]*\"?true" "$TF05_WF" && ! grep -qiE "client-secret|CLIENT_SECRET|creds:" "$TF05_WF"' \

@@ -52,8 +52,8 @@ resource "azurerm_resource_group" "hub" {
 }
 ```
 
-The starter already had the triggers, permissions, checkout, setup and login. The
-`TODO(tf-05)` parts become these steps (the full file is in the reference).
+The starter already had the triggers, permissions, checkout, stack discovery, setup and
+login. The TODO markers become these steps (the full file is in the reference).
 
 In job `plan`, after the `azure/login@v2` step:
 
@@ -110,7 +110,18 @@ Design notes:
   would be *skipped*, and GitHub counts a skipped required check as passing (tf-06).
 - **One `plan` job, not a matrix**, so the status check is literally named `plan`.
 - **`stacks.sh` takes `all` or a list.** The `workflow_dispatch` input reaches it through
-  `env:`, never through `${{ }}` inside `run:`. Unknown stack names fail the run.
+  `env:`, never through `${{ }}` inside `run:`. The starter's "Find stacks" step runs it on its
+  own line, so an unknown stack name or a discovery error fails the step under `bash -e`,
+  and an empty list fails too:
+
+  ```bash
+  list="$(bash .github/scripts/stacks.sh "$REQUESTED")"
+  if [ -z "$list" ]; then echo "::error::no stacks to apply"; exit 1; fi
+  echo "list=$list" >> "$GITHUB_OUTPUT"
+  ```
+
+  Inside `echo "list=$(...)"`, the failure would vanish: `echo` returns 0, the list is
+  empty, and the run is green without doing anything.
 - **Comment size.** At most 9 KB of plan per stack and 60 KB in total, far below GitHub's
   64 KB comment limit.
 - **`apply` only runs on `main`.** A manual run on another branch would present a subject

@@ -43,7 +43,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Find stacks
         id: stacks
-        run: echo "list=$(bash .github/scripts/stacks.sh all)" >> "$GITHUB_OUTPUT"
+        run: |
+          # On its own line so a failing stacks.sh fails the step (bash -e); echo would hide it.
+          list="$(bash .github/scripts/stacks.sh all)"
+          if [ -z "$list" ]; then echo "::error::no stacks found under terraform/"; exit 1; fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
@@ -123,7 +127,11 @@ jobs:
         id: stacks
         env:
           REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.stacks || 'all' }}
-        run: echo "list=$(bash .github/scripts/stacks.sh "$REQUESTED")" >> "$GITHUB_OUTPUT"
+        run: |
+          # On its own line so an unknown stack name fails the step (bash -e); echo would hide it.
+          list="$(bash .github/scripts/stacks.sh "$REQUESTED")"
+          if [ -z "$list" ]; then echo "::error::no stacks to apply"; exit 1; fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
