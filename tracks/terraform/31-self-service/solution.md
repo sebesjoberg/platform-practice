@@ -28,7 +28,7 @@ resource "azurerm_resource_group" "team" {
 
   name     = "rg-{{PREFIX}}-${each.key}"
   location = "{{LOCATION}}"
-  tags     = { owner = "{{OWNER_TAG}}", env = each.value.env, managed_by = "terraform", team = each.key }
+  tags     = { owner = "{{OWNER_TAG}}", env = each.value.env, managed_by = "terraform", team = each.key, vended_by = "bootstrap" }
 }
 
 resource "azurerm_role_assignment" "ci_team_rbac" {

@@ -31,7 +31,7 @@ fi
 bash "$here/../28-state-lock/catchup.sh"
 # From tf-26 landing-zone declares the click-ops storage account that setup.sh made by hand: put
 # it into landing-zone's state first, or the apply fails with "already exists".
-if grep -rqsE 'resource[[:space:]]+"azurerm_storage_account"[[:space:]]+"legacy"' terraform/landing-zone --include='*.tf'; then
+if grep --exclude-dir=.terraform -rqsE 'resource[[:space:]]+"azurerm_storage_account"[[:space:]]+"legacy"' terraform/landing-zone --include='*.tf'; then
   bash "$here/../26-import/catchup.sh"
 fi
 # From tf-31 the payments stack looks up the team's repo at plan time: it must exist.

@@ -29,6 +29,7 @@ resource "azurerm_resource_group" "team" {
     env        = each.value.env
     managed_by = "terraform"
     team       = each.key
+    vended_by  = "bootstrap" # ./lab.sh nuke finds and deletes vended groups by this tag
   }
 }
 

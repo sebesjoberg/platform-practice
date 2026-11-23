@@ -128,6 +128,7 @@ ansible-playbook -i inventory site.yml"
   fake_response az "group delete -n rg-acme-tfstate --yes" 0
   fake_response gh "repo delete learner/acme-platform --yes" 0
   # tf-31: the payments team's group is vended by bootstrap, which nuke never destroys
+  fake_response az "group list --tag vended_by=bootstrap --query [?starts_with(name, 'rg-acme-')].name -o tsv" 0 "rg-acme-payments"
   fake_response az "group exists -n rg-acme-payments -o tsv" 0 true
   fake_response az "group delete -n rg-acme-payments --yes" 0
   run "$LAB" nuke <<<$'acme\nnuke\ny\nn'
@@ -139,6 +140,7 @@ terraform -chdir=$LIVE/terraform/shared init -input=false
 terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/landing-zone init -input=false
 terraform -chdir=$LIVE/terraform/landing-zone destroy -auto-approve -input=false
+az group list --tag vended_by=bootstrap --query [?starts_with(name, 'rg-acme-')].name -o tsv
 az group exists -n rg-acme-payments -o tsv
 az group delete -n rg-acme-payments --yes
 az identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv
@@ -367,4 +369,17 @@ y'
   grep -qx "az group delete -n rg-acme-legacy --yes" "$FAKE_LOG"
   grep -qx "gh repo delete learner/acme-payments-app --yes" "$FAKE_LOG"
   ! grep -q "repo delete learner/acme-platform" "$FAKE_LOG"
+}
+
+@test "nuke deletes groups bootstrap vended before their team stack exists (tag vended_by)" {
+  fake_sub
+  fake_response az "group list --tag vended_by=bootstrap --query [?starts_with(name, 'rg-acme-')].name -o tsv" 0 "rg-acme-payments"
+  fake_response az "group exists -n rg-acme-payments -o tsv" 0 true
+  fake_response az "group delete -n rg-acme-payments --yes" 0
+  fake_response az "identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv" 3
+  fake_response az "group delete -n rg-acme-tfstate --yes" 0
+  run "$LAB" nuke <<<$'acme\nnuke\nn\nn\nn'
+  [ "$status" -eq 0 ]
+  grep -qx "az group delete -n rg-acme-payments --yes" "$FAKE_LOG"
+  [ ! -d "$LIVE/terraform/teams" ]
 }

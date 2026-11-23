@@ -13,10 +13,10 @@ export TF31_TAGS_JQ='.location == env.LOCATION and .tags.owner == env.OWNER_TAG 
 # CI's RBAC Administrator assignments: none at subscription scope may let it grant Contributor (or
 # anything, without a condition); one on the team's group allows exactly Contributor to SPs.
 export TF31_CONTRIB=b24988ac-6180-42a0-ab88-20f7382dd24c
-export TF31_SUBRBAC_JQ='[.[] | select(.roleDefinitionName == "Role Based Access Control Administrator" and .scope == ("/subscriptions/" + env.SUBSCRIPTION_ID))
+export TF31_SUBRBAC_JQ='[.[] | select(.roleDefinitionName == "Role Based Access Control Administrator" and (.scope | ascii_downcase) == (("/subscriptions/" + env.SUBSCRIPTION_ID) | ascii_downcase))
   | select((.condition // "") == "" or ((.condition // "") | ascii_downcase | contains(env.TF31_CONTRIB)))] | length == 0'
 export TF31_RGRBAC_JQ='any(.[]; .roleDefinitionName == "Role Based Access Control Administrator" and (.scope | ascii_downcase) == (env.TF31_RG_ID | ascii_downcase)
-  and ((.condition // "") | ascii_downcase | contains(env.TF31_CONTRIB)) and ((.condition // "") | test("PrincipalType\\][[:space:]]+StringEqualsIgnoreCase[[:space:]]+.ServicePrincipal")))'
+  and ((.condition // "") | ascii_downcase | contains(env.TF31_CONTRIB)) and ((.condition // "") | test("PrincipalType\\][[:space:]]+(ForAnyOfAnyValues:)?StringEqualsIgnoreCase[[:space:]]+\\{?[[:space:]]*.ServicePrincipal")))'
 export TF31_ROLES_JQ='(env.TF31_RG_ID | ascii_downcase) as $rg | length == 1 and .[0].roleDefinitionName == "Contributor" and (.[0].scope | ascii_downcase) == $rg'
 
 # tf31_module_ok: team-env in the modules repo declares the team's resources inside a resource
@@ -41,7 +41,7 @@ tf31_vended() {
     grep -qF payments <<<"$b" &&
     grep -qE '^[[:space:]]*scope[[:space:]]*=[[:space:]]*azurerm_resource_group\.' <<<"$b" &&
     grep -qF "$TF31_CONTRIB" <<<"$b" &&
-    grep -qE 'roleAssignments:PrincipalType\][[:space:]]+StringEqualsIgnoreCase[[:space:]]+.ServicePrincipal' <<<"$b"
+    grep -qE 'roleAssignments:PrincipalType\][[:space:]]+(ForAnyOfAnyValues:)?StringEqualsIgnoreCase[[:space:]]+\{?[[:space:]]*.ServicePrincipal' <<<"$b"
 }
 # tf31_stack_ok: the payments stack has its own state key and exactly one module call,
 # team_payments, from team-env at a release tag with a budget of 100, and no resources of its own.

@@ -8,7 +8,7 @@ set -euo pipefail
 cd terraform/bootstrap
 rg="rg-$PREFIX-tfstate" sa="st${PREFIX}tfstate$SUFFIX"
 
-has_backend() { grep -rqsE 'backend[[:space:]]+"azurerm"' --include='*.tf' --exclude='*_override.tf' .; }
+has_backend() { grep --exclude-dir=.terraform -rqsE 'backend[[:space:]]+"azurerm"' --include='*.tf' --exclude='*_override.tf' .; }
 account_exists() { az storage account show -g "$rg" -n "$sa" --query id -o tsv >/dev/null 2>&1; }
 
 if ! has_backend; then

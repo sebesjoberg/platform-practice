@@ -15,7 +15,7 @@ set -euo pipefail
 : "${SUFFIX:?SUFFIX not set; run ./lab.sh init}"
 : "${SUBSCRIPTION_ID:?SUBSCRIPTION_ID not set; run ./lab.sh init}"
 stack=terraform/landing-zone
-grep -rqsE 'resource[[:space:]]+"azurerm_storage_account"[[:space:]]+"legacy"' "$stack" --include='*.tf' || {
+grep --exclude-dir=.terraform -rqsE 'resource[[:space:]]+"azurerm_storage_account"[[:space:]]+"legacy"' "$stack" --include='*.tf' || {
   echo "tf-26: landing-zone doesn't declare the legacy account; nothing to do"
   exit 0
 }

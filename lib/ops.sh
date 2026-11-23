@@ -149,15 +149,20 @@ cmd_nuke() {
     az group delete -n "rg-$PREFIX-legacy" --yes </dev/null || die 1 "could not delete rg-$PREFIX-legacy"
   fi
   # tf-31: bootstrap vends each team's resource group (the stack in terraform/teams/<team> only
-  # works inside it), and nuke never destroys bootstrap. Delete the groups of the onboarded teams.
-  local team
+  # works inside it), and nuke never destroys bootstrap. Delete every vended group: those Azure
+  # knows by bootstrap's tag vended_by=bootstrap (also before the team's stack exists), plus
+  # rg-<prefix>-<team> for each terraform/teams/<team> (vended by code without the tag).
+  local team groups g
+  groups="$(az group list --tag vended_by=bootstrap --query "[?starts_with(name, 'rg-$PREFIX-')].name" -o tsv </dev/null 2>/dev/null | tr -d '\r')" || groups=""
   for team in "$LIVE_DIR"/terraform/teams/*/; do
-    [[ -d "$team" ]] || continue
-    team="$(basename "$team")"
-    if [[ "$(az group exists -n "rg-$PREFIX-$team" -o tsv </dev/null 2>/dev/null | tr -d '\r')" == true ]]; then
-      az group delete -n "rg-$PREFIX-$team" --yes </dev/null || die 1 "could not delete rg-$PREFIX-$team"
-    fi
+    [[ -d "$team" ]] && groups+=$'\n'"rg-$PREFIX-$(basename "$team")"
   done
+  while IFS= read -r g; do
+    [[ -n "$g" ]] || continue
+    if [[ "$(az group exists -n "$g" -o tsv </dev/null 2>/dev/null | tr -d '\r')" == true ]]; then
+      az group delete -n "$g" --yes </dev/null || die 1 "could not delete $g"
+    fi
+  done < <(sort -u <<<"$groups")
 
   if pid="$(az identity show -g "$rg" -n "id-$PREFIX-github-ci" --query principalId -o tsv </dev/null 2>/dev/null | tr -d '\r')" && [[ -n "$pid" ]]; then
     az role assignment delete --assignee "$pid" --yes </dev/null || die 1 "could not delete role assignments of $pid"
