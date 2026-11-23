@@ -26,6 +26,18 @@ fi
 if grep -qsE 'secrets\.LEARNER_IP|vars\.SSH_PUBLIC_KEY' "$wf"; then
   bash "$here/../25-vms-handover/catchup.sh"
 fi
+# tf-28's incident holds a stale lock on env-dev.tfstate; the run below would fail on it. Its
+# script releases only the incident's own lock, and does nothing without one.
+bash "$here/../28-state-lock/catchup.sh"
+# From tf-26 landing-zone declares the click-ops storage account that setup.sh made by hand: put
+# it into landing-zone's state first, or the apply fails with "already exists".
+if grep -rqsE 'resource[[:space:]]+"azurerm_storage_account"[[:space:]]+"legacy"' terraform/landing-zone --include='*.tf'; then
+  bash "$here/../26-import/catchup.sh"
+fi
+# From tf-31 the payments stack looks up the team's repo at plan time: it must exist.
+if [[ -d terraform/teams/payments ]]; then
+  bash "$here/../31-self-service/catchup.sh"
+fi
 # From tf-19 the env stacks pull modules from the modules repo by tag, and the hooks of the
 # tasks that release them (which create those tags) run after this one: create the tags first.
 # shellcheck source=/dev/null
