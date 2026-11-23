@@ -1,0 +1,4 @@
+---
+# How Ansible logs in to every lab VM: tf-25 created the admin user and authorized this key.
+ansible_user: azureuser
+ansible_ssh_private_key_file: ~/.ssh/{{PREFIX}}_lab

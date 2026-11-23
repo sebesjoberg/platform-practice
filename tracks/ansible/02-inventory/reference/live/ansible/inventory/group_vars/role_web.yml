@@ -1,0 +1,11 @@
+---
+# The web VMs have no public IP: every SSH connection to them goes through the jump host. Its
+# public IP comes from the dynamic inventory at run time (the jump host's hostvars), so a rebuilt
+# jump host with a new IP needs no edit. The inner ssh gets the same key and host-key options as
+# the outer one: ProxyCommand doesn't inherit them.
+jump_host_ip: "{{ hostvars[groups['role_jump'] | first]['public_ipv4_address'] | first }}"
+ansible_ssh_common_args: >-
+  -o ProxyCommand="ssh -W %h:%p -q
+  -i {{ ansible_ssh_private_key_file }} -o IdentitiesOnly=yes
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+  {{ ansible_user }}@{{ jump_host_ip }}"
