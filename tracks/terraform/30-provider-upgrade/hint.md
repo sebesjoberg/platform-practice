@@ -5,7 +5,6 @@ Docs:
 - Dependency lock file: https://developer.hashicorp.com/terraform/language/files/dependency-lock
 - `terraform providers lock`: https://developer.hashicorp.com/terraform/cli/commands/providers/lock
 - Dependabot options (`package-ecosystem: terraform`, `directories`, `groups`): https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
-- Dependabot and Actions secrets: https://docs.github.com/code-security/dependabot/troubleshooting-dependabot/troubleshooting-dependabot-on-github-actions
 
 Traps:
 - **What 5.0 changes for this code:**
