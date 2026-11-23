@@ -6,8 +6,11 @@ export TF05_VARS_JQ='(map({(.name): .value}) | add // {}) as $v | $v.AZURE_SUBSC
 export TF05_TODO_RE='^[[:space:]]*# TODO\(tf-05\)'
 export TF05_HIDDEN_RE='echo[[:space:]]+"?list=\$\('
 export TF05_COMMENT_JQ='.[] | select(.user.login == "github-actions[bot]" and ((.body // "") | contains("Terraform plan"))) | .id'
-# Job ids directly under jobs: (at the indent of the first one), one per line.
-export TF05_JOBS_AWK='/^jobs:/ { j = 1; next } j && /^[^[:space:]#]/ { j = 0 } j && /^[[:space:]]+[A-Za-z0-9_-]+:/ { match($0, /^[[:space:]]+/); if (!ind) ind = RLENGTH; if (RLENGTH == ind) { k = $0; sub(/^[[:space:]]+/, "", k); sub(/:.*/, "", k); print k } }'
+# Job helpers shared with tf-17, tf-18 and tf-24 (ci_plan_independent: plan and apply exist,
+# plan has no needs:).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_job ci_job_ids ci_plan_independent
 
 check_code "landing-zone stack has its own state key" \
   'grep -rqsE "backend[[:space:]]+\"azurerm\"" terraform/landing-zone --include="*.tf" && grep -rqsE "key[[:space:]]*=[[:space:]]*\"landing-zone\.tfstate\"" terraform/landing-zone --include="*.tf" && grep -rqsE "use_azuread_auth[[:space:]]*=[[:space:]]*true" terraform/landing-zone --include="*.tf"' \
@@ -21,9 +24,9 @@ check_code "workflow has push, pull_request and workflow_dispatch with input sta
   '[[ -f "$TF05_WF" ]] && grep -qE "^[[:space:]]*pull_request:" "$TF05_WF" && grep -qE "^[[:space:]]*push:" "$TF05_WF" && grep -qE "^[[:space:]]*workflow_dispatch:" "$TF05_WF" && grep -qE "^[[:space:]]+stacks:" "$TF05_WF"' \
   "$TF05_WF must trigger on pull_request, push and workflow_dispatch (input stacks)"
 
-check_code "workflow has exactly two jobs: plan and apply" \
-  '[[ -f "$TF05_WF" ]] && [[ "$(awk "$TF05_JOBS_AWK" "$TF05_WF" | sort | tr -s "[:space:]" " ")" == "apply plan " ]]' \
-  "$TF05_WF needs exactly the jobs plan and apply (an extra job that fails could leave the required plan check skipped)"
+check_code "workflow has the jobs plan and apply, and plan needs no other job" \
+  'ci_plan_independent "$TF05_WF"' \
+  "$TF05_WF needs the jobs plan and apply, and plan must not have needs: (a job it waits for could fail and leave the required plan check skipped)"
 
 check_code "stack discovery finds landing-zone and skips bootstrap" \
   '[[ -f .github/scripts/stacks.sh ]] && out="$(bash .github/scripts/stacks.sh all)" && [[ " $out " == *" landing-zone "* && " $out " != *" bootstrap "* ]]' \

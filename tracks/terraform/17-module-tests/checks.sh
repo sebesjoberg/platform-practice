@@ -7,7 +7,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/spoke-module.sh"
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
 export TF17_WF=.github/workflows/terraform.yml TF17_REPO="$GH_OWNER/$LIVE_REPO"
-export TF17_JOBS_AWK='/^jobs:/ { j = 1; next } j && /^[^[:space:]#]/ { j = 0 } j && /^[[:space:]]+[A-Za-z0-9_-]+:/ { n = match($0, /[^[:space:]]/) - 1; if (!ind) ind = n; if (n == ind) { k = $0; sub(/^[[:space:]]+/, "", k); sub(/:.*/, "", k); print k } }'
 export TF17_TEST_RE='terraform([[:space:]]+-chdir=[^[:space:]]+)?[[:space:]]+test'
 
 # tf17_tests_plan_only <dir>: tests/*.tftest.hcl exist; each mocks azurerm and every run block
@@ -23,7 +22,7 @@ tf17_tests_plan_only() {
   done
   [[ $total -ge 2 ]]
 }
-export -f spoke_module_dir tf17_tests_plan_only ci_plan_job ci_before_login ci_pr_green_or_caught_up
+export -f spoke_module_dir tf17_tests_plan_only ci_job ci_job_ids ci_plan_job ci_plan_independent ci_before_login ci_pr_green_or_caught_up
 
 check_code "module tests mock azurerm and only plan" \
   'tf17_tests_plan_only "$(spoke_module_dir)"' \
@@ -33,8 +32,8 @@ check_code "a test proves that a bad input is rejected" \
   'd="$(spoke_module_dir)" && grep -qsE "^[[:space:]]*expect_failures[[:space:]]*=[[:space:]]*\[[[:space:]]*var\." "$d"/tests/*.tftest.hcl' \
   "add a run that passes an invalid input (such as address_space = \"10.1.0.0/24\") with expect_failures = [var.address_space]"
 
-check_code "the plan job runs terraform test before azure/login, and the workflow still has only plan and apply" \
-  'ci_plan_job "$TF17_WF" | ci_before_login "$TF17_TEST_RE" && [[ "$(awk "$TF17_JOBS_AWK" "$TF17_WF" | sort | tr -s "[:space:]" " ")" == "apply plan " ]]' \
+check_code "the plan job runs terraform test before azure/login, and plan still needs no other job" \
+  'ci_plan_job "$TF17_WF" | ci_before_login "$TF17_TEST_RE" && ci_plan_independent "$TF17_WF"' \
   "add a step to the plan job, before azure/login, that runs terraform test for the module (init -backend=false first); no extra job: plan is the required check"
 
 check "the latest pull request run of terraform.yml succeeded (or a newer catchup run on main)" \

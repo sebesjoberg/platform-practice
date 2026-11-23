@@ -7,7 +7,7 @@ export TF18_WF=.github/workflows/terraform.yml TF18_REPO="$GH_OWNER/$LIVE_REPO"
 # a tflint run other than tflint --init (those lines are dropped first)
 export TF18_TFLINT_RE='(^|[[:space:]"])tflint([[:space:]]|$)'
 export TF18_TRIVY_RE='trivy[^#]*[[:space:]]config[[:space:]]|scan-type:[[:space:]]*"?config'
-export -f ci_plan_job ci_before_login ci_pr_green_or_caught_up
+export -f ci_job ci_plan_job ci_before_login ci_pr_green_or_caught_up
 
 check_code ".tflint.hcl enables the azurerm ruleset" \
   '[[ -f .tflint.hcl ]] && grep -qE "source[[:space:]]*=[[:space:]]*\"github.com/terraform-linters/tflint-ruleset-azurerm\"" .tflint.hcl && grep -qE "^plugin[[:space:]]+\"azurerm\"" .tflint.hcl' \
