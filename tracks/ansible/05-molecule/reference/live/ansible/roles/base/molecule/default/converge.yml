@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # A throwaway public key (its private half was deleted): the role only needs a valid one.
+    base_ops_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEFp2R9YvwcMACvxp7NF8Slqla26EQOZNlgDwY/5I4Gu molecule
+    # A container shares the host's kernel clock: chronyd may not (and must not) set it.
+    base_chrony_manage_service: false
+  roles:
+    - role: base

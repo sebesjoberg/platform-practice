@@ -1,0 +1,67 @@
+---
+# Assertions about the converged container. ansible-lint counts this file as part of the role,
+# so registered variables carry the role prefix too.
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the sshd drop-in
+      ansible.builtin.slurp:
+        src: /etc/ssh/sshd_config.d/00-hardening.conf
+      register: base_verify_dropin
+
+    - name: The drop-in turns off root and password logins
+      ansible.builtin.assert:
+        that:
+          - "'PermitRootLogin no' in base_verify_dropin_lines"
+          - "'PasswordAuthentication no' in base_verify_dropin_lines"
+        fail_msg: /etc/ssh/sshd_config.d/00-hardening.conf lacks PermitRootLogin no / PasswordAuthentication no
+      vars:
+        base_verify_dropin_lines: "{{ (base_verify_dropin.content | b64decode).splitlines() }}"
+
+    - name: Read the effective sshd configuration
+      ansible.builtin.command: /usr/sbin/sshd -T
+      register: base_verify_sshd
+      changed_when: false
+
+    - name: The effective configuration has the hardened values
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in base_verify_sshd.stdout_lines"
+          - "'passwordauthentication no' in base_verify_sshd.stdout_lines"
+
+    - name: Gather the installed packages
+      ansible.builtin.package_facts:
+
+    - name: The baseline packages are installed
+      ansible.builtin.assert:
+        that: "item in ansible_facts.packages"
+        fail_msg: "{{ item }} is not installed"
+      loop:
+        - openssh-server
+        - unattended-upgrades
+        - chrony
+
+    - name: The ops user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: ops
+
+    - name: Read the unattended-upgrade setting
+      ansible.builtin.command: apt-config dump APT::Periodic::Unattended-Upgrade
+      register: base_verify_apt
+      changed_when: false
+
+    - name: Unattended upgrades are switched on
+      ansible.builtin.assert:
+        that: "'APT::Periodic::Unattended-Upgrade \"1\";' in base_verify_apt.stdout_lines"
+
+    - name: Read the state of the ssh service
+      ansible.builtin.systemd_service:
+        name: ssh
+      register: base_verify_ssh_unit
+
+    - name: The ssh service is active (the reload handler started it)
+      ansible.builtin.assert:
+        that: base_verify_ssh_unit.status.ActiveState == "active"

@@ -1,0 +1,10 @@
+---
+# Exact versions: an upgrade is a reviewed change to this file, not a surprise on the next install.
+#   ansible-galaxy collection install -r collections/requirements.yml -p collections
+collections:
+  - name: azure.azcollection
+    version: 4.2.0
+  - name: community.general
+    version: 14.0.1
+  - name: ansible.posix
+    version: 2.2.2

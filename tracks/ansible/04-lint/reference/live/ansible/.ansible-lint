@@ -1,0 +1,12 @@
+---
+# ansible-lint for this project: run `ansible-lint` from ansible/ (pre-commit does it on commit).
+# The production profile is the strictest: every rule of the lower profiles plus FQCNs,
+# role-prefixed variables, no free-form module calls, valid role metadata.
+profile: production
+
+# Paths are relative to this file. Git-ignored files are skipped anyway; this keeps a run on an
+# untracked checkout fast too.
+exclude_paths:
+  - .venv/
+  - collections/ansible_collections/
+  - .ansible/

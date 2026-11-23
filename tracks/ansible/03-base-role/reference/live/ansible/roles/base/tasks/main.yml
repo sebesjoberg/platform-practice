@@ -1,0 +1,27 @@
+---
+# A fresh or resumed VM runs apt-daily right after boot and holds the dpkg lock for minutes:
+# wait for it instead of failing.
+- name: Install the baseline packages
+  ansible.builtin.apt:
+    name: "{{ base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+  tags: [base, base_packages]
+
+- name: Ops user
+  ansible.builtin.import_tasks: users.yml
+  tags: [base, base_users]
+
+- name: SSH daemon
+  ansible.builtin.import_tasks: sshd.yml
+  tags: [base, base_sshd]
+
+- name: Unattended upgrades
+  ansible.builtin.import_tasks: updates.yml
+  tags: [base, base_updates]
+
+- name: Time
+  ansible.builtin.import_tasks: time.yml
+  tags: [base, base_time]

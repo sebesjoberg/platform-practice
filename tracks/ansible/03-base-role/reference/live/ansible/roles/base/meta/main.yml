@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  # namespace.role_name is how tools (Molecule, ansible-lint) name the role: acme.base.
+  namespace: acme
+  role_name: base
+  author: Acme platform team
+  description: Baseline for every Ubuntu VM - ops user, sshd hardening, unattended upgrades, time sync
+  license: MIT
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

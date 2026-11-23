@@ -1,0 +1,20 @@
+---
+- name: Set the timezone
+  community.general.timezone:
+    name: "{{ base_timezone }}"
+
+- name: Add the NTP pools to chrony
+  ansible.builtin.template:
+    src: base.sources.j2
+    dest: /etc/chrony/sources.d/base.sources
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart chrony
+
+- name: Keep chrony running and enabled
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: started
+    enabled: true
+  when: base_chrony_manage_service

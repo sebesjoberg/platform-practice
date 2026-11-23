@@ -1,0 +1,28 @@
+---
+# Dynamic inventory: the lab's Azure VMs, grouped by the tags Terraform gives them.
+#   ansible-inventory --graph
+plugin: azure.azcollection.azure_rm
+
+# Your `az login` session locally. CI on the jump host overrides this with
+# ANSIBLE_AZURE_AUTH_SOURCE=msi (the VM's managed identity), so the file stays the same.
+auth_source: cli
+
+# Only the resource groups with lab VMs: fewer API calls, and no stray VMs from elsewhere.
+include_vm_resource_groups:
+  - rg-{{PREFIX}}-shared
+  - rg-{{PREFIX}}-dev
+
+# Inventory hostnames are the VM names (vm-<prefix>-jump, ...), not the plugin's hashed default.
+hostnames:
+  - name
+
+# role_jump, role_web, env_hub, env_dev. A VM without the tag lands in role_untagged/env_untagged,
+# which no play targets.
+keyed_groups:
+  - prefix: role
+    key: tags.role | default('untagged')
+  - prefix: env
+    key: tags.env | default('untagged')
+
+# The plugin's default filters already drop VMs that are not running or not provisioned
+# (paused or half-built), so a stopped VM never shows up as unreachable.

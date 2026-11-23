@@ -1,0 +1,12 @@
+# {{ ansible_managed }} (role base)
+# Sorts before 50-cloud-init.conf: for most keywords sshd keeps the first value it reads.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+PubkeyAuthentication yes
+X11Forwarding no
+MaxAuthTries 3
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2

@@ -1,0 +1,23 @@
+---
+# `sshd -t` refuses to run without its privilege separation directory. systemd creates it when
+# ssh.service starts, so a VM you reach over SSH has it, but a fresh machine (a container, an
+# image build) where sshd never ran doesn't. Molecule found that assumption.
+- name: Make sure sshd's privilege separation directory exists
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# sshd_config includes sshd_config.d/*.conf at its top, in lexical order, and for most keywords
+# the first value read wins. cloud-init writes 50-cloud-init.conf, so this drop-in sorts first.
+- name: Harden sshd with a drop-in
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd
