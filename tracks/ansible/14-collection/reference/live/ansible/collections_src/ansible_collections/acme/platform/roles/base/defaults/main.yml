@@ -1,0 +1,25 @@
+---
+# Packages every VM gets.
+base_packages:
+  - openssh-server
+  - sudo
+  - unattended-upgrades
+  - chrony
+  - tzdata
+
+# The non-root admin account. Its SSH public keys are set per inventory (required, no default).
+base_ops_user: ops
+
+base_timezone: Etc/UTC
+
+# Extra NTP pools for chrony, on top of the distribution's sources (on Azure, the host clock).
+base_ntp_pools:
+  - time.cloudflare.com
+
+# Manage the chrony service (start, enable, restart on change). Off only where something else
+# owns the clock: a container shares its host's kernel clock (Molecule).
+base_chrony_manage_service: true
+
+# Unattended upgrades install security updates daily; rebooting stays a decision per fleet.
+base_unattended_upgrades_reboot: false
+base_unattended_upgrades_reboot_time: "03:30"

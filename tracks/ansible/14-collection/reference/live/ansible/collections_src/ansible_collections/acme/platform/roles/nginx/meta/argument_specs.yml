@@ -1,0 +1,30 @@
+---
+argument_specs:
+  main:
+    short_description: nginx web server with a role-owned, validated configuration
+    options:
+      nginx_site_env:
+        type: str
+        description: Environment named on the start page (dev, prod).
+      nginx_root:
+        type: path
+        description: Document root of the start page.
+      nginx_worker_connections:
+        type: int
+        description: worker_connections in the events block.
+      nginx_proxy_pass:
+        type: str
+        description: Upstream URL for every request (reverse proxy); empty serves the start page.
+      nginx_tls:
+        type: bool
+        description: Serve HTTPS on 443 with nginx_tls_pem (port 80 keeps serving).
+      nginx_tls_pem:
+        type: str
+        no_log: true
+        description: PEM bundle with the private key and the certificate (chain).
+      nginx_tls_dir:
+        type: path
+        description: Directory for the key and the certificate.
+      nginx_tls_name:
+        type: str
+        description: File name stem of the key and the certificate.

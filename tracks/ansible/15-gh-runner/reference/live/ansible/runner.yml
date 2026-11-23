@@ -1,0 +1,14 @@
+---
+# The jump host as the repo's self-hosted GitHub Actions runner (an-15). Run it from your machine,
+# never from CI (a runner must not reconfigure and restart itself in the middle of a job). The
+# first run registers it with a fresh token, passed so that it appears in no file and no process
+# list:
+#   umask 077; gh api -X POST repos/{{GH_OWNER}}/{{LIVE_REPO}}/actions/runners/registration-token \
+#     --jq '{gh_runner_token: .token}' > /tmp/runner-token.json
+#   ansible-playbook runner.yml -e @/tmp/runner-token.json; rm /tmp/runner-token.json
+# Later runs need no token. Then run site.yml: role base authorizes the runner's new SSH key.
+- name: Self-hosted GitHub Actions runner
+  hosts: role_jump
+  become: true
+  roles:
+    - role: acme.platform.gh_runner

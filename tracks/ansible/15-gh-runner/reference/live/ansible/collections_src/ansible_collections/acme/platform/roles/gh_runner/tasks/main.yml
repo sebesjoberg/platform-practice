@@ -1,0 +1,139 @@
+---
+- name: Install what the runner and its jobs need
+  ansible.builtin.apt:
+    name: "{{ gh_runner_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+
+# The 1 GiB jump host: swap keeps an Ansible run with the Azure SDK from being OOM-killed.
+- name: Create and format the swap file
+  ansible.builtin.shell: |
+    set -e
+    fallocate -l {{ gh_runner_swap_mb | int }}M /swapfile.new
+    chmod 600 /swapfile.new
+    mkswap /swapfile.new
+    mv /swapfile.new /swapfile
+  args:
+    creates: /swapfile
+  when: gh_runner_swap_mb | int > 0
+
+- name: Use the swap file at boot
+  ansible.posix.mount:
+    path: none
+    src: /swapfile
+    fstype: swap
+    opts: sw
+    state: present
+  when: gh_runner_swap_mb | int > 0
+
+- name: Read the active swap areas
+  ansible.builtin.command: swapon --show=NAME --noheadings
+  register: gh_runner_swapon
+  changed_when: false
+  check_mode: false
+  when: gh_runner_swap_mb | int > 0
+
+- name: Use the swap file now
+  ansible.builtin.command: swapon /swapfile
+  changed_when: true
+  when: gh_runner_swap_mb | int > 0 and '/swapfile' not in gh_runner_swapon.stdout_lines
+
+# The key the runner's jobs use to reach the fleet (as the ops user; role base authorizes the
+# public half on every VM). It is generated here and never leaves the jump host.
+- name: Create the runner's user, with its own SSH key
+  ansible.builtin.user:
+    name: "{{ gh_runner_user }}"
+    shell: /bin/bash
+    create_home: true
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_file: .ssh/id_ed25519
+    ssh_key_comment: "{{ gh_runner_user }}@{{ inventory_hostname }}"
+
+- name: Create the runner directory
+  ansible.builtin.file:
+    path: "{{ gh_runner_dir }}"
+    state: directory
+    owner: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_user }}"
+    mode: "0755"
+
+- name: Download the runner release
+  ansible.builtin.get_url:
+    url: "https://github.com/actions/runner/releases/download/v{{ gh_runner_version }}/actions-runner-linux-x64-{{ gh_runner_version }}.tar.gz"
+    dest: "/var/cache/actions-runner-linux-x64-{{ gh_runner_version }}.tar.gz"
+    checksum: "{{ gh_runner_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Only the first time: the runner updates itself in place afterwards.
+- name: Unpack the runner
+  ansible.builtin.unarchive:
+    src: "/var/cache/actions-runner-linux-x64-{{ gh_runner_version }}.tar.gz"
+    dest: "{{ gh_runner_dir }}"
+    remote_src: true
+    owner: "{{ gh_runner_user }}"
+    group: "{{ gh_runner_user }}"
+    creates: "{{ gh_runner_dir }}/config.sh"
+
+- name: Registration
+  when: gh_runner_register
+  block:
+    - name: Look for an existing registration
+      ansible.builtin.stat:
+        path: "{{ gh_runner_dir }}/.runner"
+      register: gh_runner_registered
+
+    - name: Refuse to register without a token
+      ansible.builtin.assert:
+        that: gh_runner_token | length > 0
+        fail_msg: >-
+          The runner is not registered yet: pass a registration token with -e gh_runner_token=...
+          (gh api -X POST repos/OWNER/REPO/actions/runners/registration-token --jq .token)
+        quiet: true
+      when: not gh_runner_registered.stat.exists
+
+    # --replace takes over the name from an earlier registration (a rebuilt jump host).
+    - name: Register the runner with the repository
+      ansible.builtin.command:
+        argv:
+          - ./config.sh
+          - --unattended
+          - --url
+          - "{{ gh_runner_repo_url }}"
+          - --token
+          - "{{ gh_runner_token }}"
+          - --name
+          - "{{ gh_runner_name }}"
+          - --labels
+          - "{{ gh_runner_labels | join(',') }}"
+          - --work
+          - _work
+          - --replace
+        chdir: "{{ gh_runner_dir }}"
+        creates: "{{ gh_runner_dir }}/.runner"
+      become: true
+      become_user: "{{ gh_runner_user }}"
+      no_log: true
+
+    - name: Install the runner as a systemd service that runs as its user
+      ansible.builtin.command:
+        cmd: ./svc.sh install {{ gh_runner_user }}
+        chdir: "{{ gh_runner_dir }}"
+        creates: "{{ gh_runner_dir }}/.service"
+
+    - name: Read the service's name
+      ansible.builtin.slurp:
+        src: "{{ gh_runner_dir }}/.service"
+      register: gh_runner_service
+      failed_when: false
+
+    - name: Keep the runner running and enabled
+      ansible.builtin.systemd_service:
+        name: "{{ gh_runner_service.content | b64decode | trim }}"
+        state: started
+        enabled: true
+      when: gh_runner_service.content is defined

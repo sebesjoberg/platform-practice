@@ -1,0 +1,48 @@
+---
+# Rolling update of the app, one web server at a time, without dropping a request:
+#   ansible-playbook rolling.yml                         # the release in group_vars/role_web.yml
+#   ansible-playbook rolling.yml -e app_version=1.0.0    # a one-off (the next plain run undoes it)
+# Each server leaves the HAProxy pool on the jump host (drained: running requests finish, new
+# ones go to the other server), gets the release, proves itself healthy (role acme_hello waits
+# for /health = ok <version>), and only then rejoins the pool. A failed server stops the run
+# before the next one is touched (max_fail_percentage: 0), so at most one server is ever out.
+- name: Roll the app out over the web servers
+  hosts: role_web
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    # The load balancer (an-10): the jump host's HAProxy and its Runtime API. Server names in the
+    # backend are the inventory hostnames.
+    rolling_lb_host: "{{ groups['role_jump'] | first }}"
+    rolling_lb_socket: /run/haproxy/admin.sock
+    rolling_lb_backend: web
+  pre_tasks:
+    - name: Drain this server in HAProxy and wait until its connections are gone
+      community.general.haproxy:
+        state: disabled
+        drain: true
+        wait: true
+        wait_interval: 2
+        wait_retries: 30
+        host: "{{ inventory_hostname }}"
+        backend: "{{ rolling_lb_backend }}"
+        socket: "{{ rolling_lb_socket }}"
+      delegate_to: "{{ rolling_lb_host }}"
+
+  roles:
+    - role: acme.platform.acme_hello
+
+  post_tasks:
+    # Only after the role's health gate passed. wait: HAProxy's own health check must see the
+    # server UP before the next one leaves the pool.
+    - name: Put this server back into the pool and wait until HAProxy reports it UP
+      community.general.haproxy:
+        state: enabled
+        wait: true
+        wait_interval: 2
+        wait_retries: 30
+        host: "{{ inventory_hostname }}"
+        backend: "{{ rolling_lb_backend }}"
+        socket: "{{ rolling_lb_socket }}"
+      delegate_to: "{{ rolling_lb_host }}"

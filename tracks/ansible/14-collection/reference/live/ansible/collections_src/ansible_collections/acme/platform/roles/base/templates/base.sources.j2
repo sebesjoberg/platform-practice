@@ -1,0 +1,4 @@
+# {{ ansible_managed }} (role base)
+{% for pool in base_ntp_pools %}
+pool {{ pool }} iburst maxsources 2
+{% endfor %}

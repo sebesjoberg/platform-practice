@@ -1,0 +1,17 @@
+# An Ubuntu image that boots systemd, close to the Azure VMs: Molecule builds it from the
+# platform's image (ubuntu:24.04). Nothing the role installs is baked in, so converge has work to do.
+FROM {{ item.image }}
+
+ENV container=docker DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends systemd systemd-sysv dbus python3 python3-apt sudo ca-certificates \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Units that make no sense in a container.
+RUN systemctl mask systemd-logind.service getty.target console-getty.service systemd-udevd.service \
+      systemd-udev-trigger.service systemd-firstboot.service
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/lib/systemd/systemd"]

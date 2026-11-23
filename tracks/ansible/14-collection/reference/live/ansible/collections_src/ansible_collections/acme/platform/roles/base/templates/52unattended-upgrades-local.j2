@@ -1,0 +1,3 @@
+// {{ ansible_managed }} (role base)
+Unattended-Upgrade::Automatic-Reboot "{{ base_unattended_upgrades_reboot | ternary('true', 'false') }}";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ base_unattended_upgrades_reboot_time }}";

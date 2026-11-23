@@ -1,0 +1,28 @@
+---
+# The collection acme.platform: the platform team's roles and module, released by tag from this
+# repo and installed from git by everything that uses them (ansible/collections/requirements.yml).
+# A release: bump version (semver; a role variable renamed or removed is a major change), add the
+# CHANGELOG.md entry, merge, tag the merge commit acme.platform-<version>, push the tag, then pin
+# it in requirements.yml.
+namespace: acme
+name: platform
+version: 1.1.0
+readme: README.md
+authors:
+  - Acme platform team
+description: Acme's platform roles (baseline, app, web, load balancer) and the acme_app_setting module
+license:
+  - GPL-3.0-or-later
+tags:
+  - infrastructure
+  - linux
+repository: https://github.com/{{GH_OWNER}}/{{LIVE_REPO}}
+# What the roles use: community.general.timezone (base), ansible.posix.authorized_key (base).
+dependencies:
+  community.general: ">=14.0.0"
+  ansible.posix: ">=2.2.0"
+# Tests and caches stay out of the installed collection.
+build_ignore:
+  - "roles/*/molecule"
+  - ".ansible"
+  - "*.tar.gz"

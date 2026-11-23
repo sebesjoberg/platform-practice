@@ -1,0 +1,25 @@
+---
+# The release to run: a directory under files/releases/ (1.0.0, 1.1.0, broken). The inventory
+# sets it from app_version.
+acme_hello_version: "1.0.0"
+
+# The app listens on 127.0.0.1 only; nginx proxies to it.
+acme_hello_port: 8080
+
+# Environment shown on the page (dev, prod).
+acme_hello_env: unknown
+
+acme_hello_user: acme-hello
+acme_hello_home: /opt/acme-hello
+
+# The environment file of role app_env. systemd (PID 1) reads it as root before it drops
+# privileges, so the service user needs no access to it (no membership in app_env's group).
+acme_hello_env_file: /etc/acme/app.env
+
+# systemd sandboxing that needs mount namespaces (ProtectSystem, PrivateTmp, ProtectKernel*, ...).
+# Off only where systemd may not create them: an unprivileged container (Molecule), where the unit
+# would fail with status 226/NAMESPACE. The rest of the hardening stays on everywhere.
+acme_hello_sandbox: true
+
+# How long to wait for /health after a restart: retries x 2 seconds.
+acme_hello_health_retries: 15

@@ -1,0 +1,35 @@
+---
+# Molecule scenario for role acme_hello: the systemd-capable container of the other roles. The
+# unit's mount-namespace sandboxing can't run unprivileged (226/NAMESPACE), so converge.yml sets
+# acme_hello_sandbox: false; everything else (user, capabilities, syscall filter, health gate)
+# runs as on the VMs, where the grader checks the full hardening.
+#   cd ansible/collections_src/ansible_collections/acme/platform/roles/acme_hello && molecule test
+driver:
+  name: docker
+
+platforms:
+  - name: acme-hello-noble
+    image: ubuntu:24.04
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    command: /lib/systemd/systemd
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+
+ansible:
+  env:
+    # Molecule brings its own ansible.cfg, so say again where the collections are: first the
+    # collection source itself (collections_src holds ansible_collections/acme/platform, so
+    # acme.platform.* in converge.yml is the code under test, the module included), then the
+    # ones installed into ansible/collections, keeping any path already set (CI).
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../../..:\
+      ${MOLECULE_PROJECT_DIRECTORY}/../../../../../../collections:\
+      ${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}"
+
+verifier:
+  name: ansible

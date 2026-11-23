@@ -1,0 +1,4 @@
+# an-14 moves the roles and the module into the collection acme.platform
+# (ansible/collections_src/ansible_collections/acme/platform).
+live/ansible/roles
+live/ansible/library

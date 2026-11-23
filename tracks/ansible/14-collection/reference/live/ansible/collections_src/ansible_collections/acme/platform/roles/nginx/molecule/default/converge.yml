@@ -1,0 +1,29 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  pre_tasks:
+    # Key Vault issues the real certificate; here a throwaway one stands in, in the same shape.
+    - name: Create a throwaway self-signed certificate
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes -days 7 -subj /CN=acme-web.internal
+          -keyout /root/molecule-tls.key -out /root/molecule-tls.crt
+        creates: /root/molecule-tls.crt
+
+    - name: Read the test key
+      ansible.builtin.slurp:
+        src: /root/molecule-tls.key
+      register: nginx_molecule_key
+
+    - name: Read the test certificate
+      ansible.builtin.slurp:
+        src: /root/molecule-tls.crt
+      register: nginx_molecule_crt
+  vars:
+    nginx_site_env: molecule
+    nginx_tls: true
+    # Key, then certificate: the layout of a Key Vault certificate's PEM secret.
+    nginx_tls_pem: "{{ (nginx_molecule_key.content | b64decode) ~ (nginx_molecule_crt.content | b64decode) }}"
+  roles:
+    - role: acme.platform.nginx

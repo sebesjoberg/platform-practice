@@ -1,0 +1,49 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the runner user's private key
+      ansible.builtin.stat:
+        path: /home/gh-runner/.ssh/id_ed25519
+      register: gh_runner_verify_key
+
+    - name: The key exists, belongs to the runner's user, and nobody else can read it
+      ansible.builtin.assert:
+        that:
+          - gh_runner_verify_key.stat.exists
+          - gh_runner_verify_key.stat.pw_name == "gh-runner"
+          - gh_runner_verify_key.stat.mode == "0600"
+
+    - name: Read the public key
+      ansible.builtin.slurp:
+        src: /home/gh-runner/.ssh/id_ed25519.pub
+      register: gh_runner_verify_pub
+
+    - name: It is an ed25519 key
+      ansible.builtin.assert:
+        that: (gh_runner_verify_pub.content | b64decode) is match('ssh-ed25519 ')
+
+    - name: Read the unpacked runner
+      ansible.builtin.stat:
+        path: /opt/actions-runner/config.sh
+      register: gh_runner_verify_config
+
+    - name: The runner belongs to its user
+      ansible.builtin.assert:
+        that:
+          - gh_runner_verify_config.stat.exists
+          - gh_runner_verify_config.stat.pw_name == "gh-runner"
+
+    # The .NET runtime fails here if a dependency (ICU, Kerberos, ...) is missing.
+    - name: Ask the runner for its version, as its user
+      ansible.builtin.command: /opt/actions-runner/bin/Runner.Listener --version
+      become: true
+      become_user: gh-runner
+      register: gh_runner_verify_version
+      changed_when: false
+
+    - name: The runner starts and reports the pinned release
+      ansible.builtin.assert:
+        that: gh_runner_verify_version.stdout is search('2\.338\.2')

@@ -1,0 +1,36 @@
+---
+# Molecule scenario for role base: an Ubuntu 24.04 container that boots systemd, so services and
+# handlers (sshd reload) run for real. Run from ansible/collections_src/ansible_collections/acme/platform/roles/base with the venv active:
+#   molecule test        (create, converge, idempotence, verify, destroy)
+#   molecule converge    (keep the container; molecule login to look around)
+driver:
+  name: docker
+
+platforms:
+  - name: base-noble
+    image: ubuntu:24.04
+    # Dockerfile.j2 next to this file adds systemd, python3 and sudo to the image.
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    command: /lib/systemd/systemd
+    # systemd as PID 1 needs the cgroup hierarchy and a tmpfs /run. No privileged mode.
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+
+ansible:
+  env:
+    # Molecule brings its own ansible.cfg, so say again where the collections are: first the
+    # collection source itself (collections_src holds ansible_collections/acme/platform, so
+    # acme.platform.* in converge.yml is the code under test, the module included), then the
+    # ones installed into ansible/collections, keeping any path already set (CI).
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../../..:\
+      ${MOLECULE_PROJECT_DIRECTORY}/../../../../../../collections:\
+      ${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}"
+
+verifier:
+  name: ansible

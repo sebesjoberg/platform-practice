@@ -1,0 +1,36 @@
+---
+# The whole fleet, in order.
+#   ansible-playbook site.yml
+- name: Baseline every VM
+  hosts: all
+  become: true
+  pre_tasks:
+    # The CI runner's public key (role gh_runner, runner.yml), read on the jump host on every run
+    # (also with --limit) so that role base authorizes it for the ops user everywhere: CI reaches
+    # the fleet with a key that never left the jump host. Before the runner exists there is no
+    # file, and base authorizes only your lab key.
+    - name: Read the CI runner's public SSH key on the jump host
+      ansible.builtin.slurp:
+        src: "{{ acme_runner_pubkey_file }}"
+      delegate_to: "{{ groups['role_jump'] | first }}"
+      run_once: true
+      register: acme_runner_pubkey
+      failed_when: false
+  roles:
+    - role: acme.platform.base
+
+# The app's configuration, then the app (it waits for its own health), then nginx in front of it.
+- name: Web servers
+  hosts: role_web
+  become: true
+  roles:
+    - role: acme.platform.app_env
+    - role: acme.platform.acme_hello
+    - role: acme.platform.nginx
+
+# After the web servers, so HAProxy's first health checks find them serving.
+- name: Load balancer
+  hosts: role_jump
+  become: true
+  roles:
+    - role: acme.platform.haproxy

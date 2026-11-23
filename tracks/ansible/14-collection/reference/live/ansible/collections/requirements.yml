@@ -1,0 +1,19 @@
+---
+# Exact versions: an upgrade is a reviewed change to this file, not a surprise on the next install.
+#   ansible-galaxy collection install -r collections/requirements.yml -p collections
+collections:
+  - name: azure.azcollection
+    version: 4.2.0
+  - name: community.general
+    version: 14.0.1
+  - name: ansible.posix
+    version: 2.2.2
+  # Molecule's docker driver creates and removes the test containers with it.
+  - name: community.docker
+    version: 5.4.0
+  # This repo's own roles and module (an-14), released by tag. The source is
+  # ansible/collections_src/ansible_collections/acme/platform (galaxy reads the #/ subdirectory);
+  # a new release is a new tag (acme.platform-<version>) pinned here, then installed with --force.
+  - name: https://github.com/{{GH_OWNER}}/{{LIVE_REPO}}.git#/ansible/collections_src/ansible_collections/acme/platform
+    type: git
+    version: acme.platform-1.0.0

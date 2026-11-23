@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  namespace: acme
+  role_name: haproxy
+  author: Acme platform team
+  description: HAProxy load balancer with health checks and an admin Runtime API socket
+  license: MIT
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

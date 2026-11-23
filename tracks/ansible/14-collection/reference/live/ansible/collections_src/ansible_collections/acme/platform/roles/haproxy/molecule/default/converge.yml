@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # The fake servers from prepare.yml; on the jump host the inventory fills this.
+    haproxy_backends:
+      web-a: 127.0.0.2
+      web-b: 127.0.0.3
+    haproxy_backend_port: 8081
+    # Unprivileged container: no mount namespace for the unit's /dev/log bind mount.
+    haproxy_mount_namespace: false
+  roles:
+    - role: acme.platform.haproxy

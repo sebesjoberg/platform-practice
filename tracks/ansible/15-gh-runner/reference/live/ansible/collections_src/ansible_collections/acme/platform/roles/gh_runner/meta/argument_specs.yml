@@ -1,0 +1,42 @@
+---
+argument_specs:
+  main:
+    short_description: A self-hosted GitHub Actions runner as a systemd service
+    options:
+      gh_runner_repo_url:
+        type: str
+        required: true
+        description: The repository the runner serves, https://github.com/<owner>/<repo>.
+      gh_runner_token:
+        type: str
+        no_log: true
+        description: Registration token (1 hour), needed only while the runner isn't registered. Pass it with -e.
+      gh_runner_name:
+        type: str
+        description: The runner's name in GitHub.
+      gh_runner_labels:
+        type: list
+        elements: str
+        description: Labels besides self-hosted, Linux and X64.
+      gh_runner_user:
+        type: str
+        description: The unprivileged user the runner runs as; owns its SSH key.
+      gh_runner_dir:
+        type: path
+        description: Where the runner is installed.
+      gh_runner_version:
+        type: str
+        description: Release installed the first time (it updates itself).
+      gh_runner_checksum:
+        type: str
+        description: Checksum of that release's linux-x64 archive, sha256:<hex>.
+      gh_runner_packages:
+        type: list
+        elements: str
+        description: Packages the runner and its jobs need.
+      gh_runner_swap_mb:
+        type: int
+        description: Size of a swap file in MiB, 0 for none.
+      gh_runner_register:
+        type: bool
+        description: Register and start the service. False only in Molecule.

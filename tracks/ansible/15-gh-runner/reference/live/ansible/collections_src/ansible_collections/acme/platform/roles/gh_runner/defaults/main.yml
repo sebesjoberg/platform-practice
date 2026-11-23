@@ -1,0 +1,46 @@
+---
+# gh_runner_repo_url (required, no default): the repository the runner serves,
+# https://github.com/<owner>/<repo>. The inventory sets it.
+
+# The registration token: short-lived (1 hour) and secret. Get one with
+#   gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token
+# and pass it with -e for the run that registers (never in a file of the repo). Once the runner is
+# registered, later runs need no token.
+gh_runner_token: ""
+
+# Name and labels in GitHub. GitHub adds self-hosted, Linux and X64 by itself; workflows pick this
+# runner with runs-on: [self-hosted, acme-jump].
+gh_runner_name: "{{ inventory_hostname }}"
+gh_runner_labels:
+  - acme-jump
+
+# The runner runs as this unprivileged user, as a systemd service.
+gh_runner_user: gh-runner
+gh_runner_dir: /opt/actions-runner
+
+# The release installed the first time (the runner updates itself after that). Checksum from the
+# release notes on https://github.com/actions/runner/releases.
+gh_runner_version: "2.338.2"
+gh_runner_checksum: "sha256:baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40"
+
+# What the runner needs, and what the jobs on it use: git for checkouts, python3-venv for the
+# Ansible toolchain, gh for the drift issue (an-16), acl so that Ansible can become the runner's
+# user. The rest are the runner's .NET dependencies.
+gh_runner_packages:
+  - acl
+  - git
+  - python3-venv
+  - gh
+  - libicu74
+  - libkrb5-3
+  - zlib1g
+  - libssl3t64
+  - liblttng-ust1t64
+
+# A swap file (MiB) for the 1 GiB jump host: an Ansible run with the Azure SDK next to HAProxy
+# and the runner doesn't fit in RAM alone. 0 = none (containers, Molecule).
+gh_runner_swap_mb: 2048
+
+# Register with GitHub and run as a service. False only in Molecule, where there is nothing to
+# register with: everything up to the registration is still tested there.
+gh_runner_register: true

@@ -1,0 +1,39 @@
+---
+# Two stand-ins for the web VMs: python http.server on 127.0.0.2 and 127.0.0.3 (all of 127/8 is
+# loopback), each with a page naming it and a /health file. Runs once, after create.
+- name: Prepare
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    haproxy_prepare_servers:
+      web-a: 127.0.0.2
+      web-b: 127.0.0.3
+  tasks:
+    - name: Create the fake servers' document roots
+      ansible.builtin.file:
+        path: "/srv/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ haproxy_prepare_servers.keys() | list }}"
+
+    - name: Write their pages
+      ansible.builtin.copy:
+        dest: "/srv/{{ item }}/index.html"
+        content: "hello from {{ item }}\n"
+        mode: "0644"
+      loop: "{{ haproxy_prepare_servers.keys() | list }}"
+
+    - name: Write their health files
+      ansible.builtin.copy:
+        dest: "/srv/{{ item }}/health"
+        content: "ok\n"
+        mode: "0644"
+      loop: "{{ haproxy_prepare_servers.keys() | list }}"
+
+    - name: Start them as transient systemd services
+      ansible.builtin.command: >-
+        systemd-run --unit fake-{{ item.key }}
+        /usr/bin/python3 -m http.server 8081 --bind {{ item.value }} --directory /srv/{{ item.key }}
+      changed_when: true
+      loop: "{{ haproxy_prepare_servers | dict2items }}"

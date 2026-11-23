@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    gh_runner_repo_url: https://github.com/acme-example/acme-platform
+    # Nothing to register with in a container; no swap file in a container either.
+    gh_runner_register: false
+    gh_runner_swap_mb: 0
+  roles:
+    - role: acme.platform.gh_runner

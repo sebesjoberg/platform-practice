@@ -1,0 +1,35 @@
+---
+# Molecule scenario for role gh_runner: the systemd container of the other roles. There is no
+# GitHub to register with, so converge.yml sets gh_runner_register: false (and no swap file in a
+# container): the user, its SSH key, the packages and the unpacked runner are tested, and the
+# runner proves its dependencies by printing its version.
+#   cd ansible/collections_src/ansible_collections/acme/platform/roles/gh_runner && molecule test
+driver:
+  name: docker
+
+platforms:
+  - name: gh-runner-noble
+    image: ubuntu:24.04
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    command: /lib/systemd/systemd
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+
+ansible:
+  env:
+    # Molecule brings its own ansible.cfg, so say again where the collections are: first the
+    # collection source itself (collections_src holds ansible_collections/acme/platform, so
+    # acme.platform.* in converge.yml is the code under test), then the ones installed into
+    # ansible/collections, keeping any path already set (CI).
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../../..:\
+      ${MOLECULE_PROJECT_DIRECTORY}/../../../../../../collections:\
+      ${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}"
+
+verifier:
+  name: ansible

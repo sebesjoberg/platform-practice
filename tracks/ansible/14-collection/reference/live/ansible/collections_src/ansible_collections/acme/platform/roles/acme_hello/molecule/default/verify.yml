@@ -1,0 +1,57 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Read the state of the service
+      ansible.builtin.systemd_service:
+        name: acme-hello
+      register: acme_hello_verify_unit
+
+    - name: The service is active, enabled, and not root
+      ansible.builtin.assert:
+        that:
+          - acme_hello_verify_unit.status.ActiveState == "active"
+          - acme_hello_verify_unit.status.UnitFileState == "enabled"
+          - acme_hello_verify_unit.status.User == "acme-hello"
+
+    - name: Ask for the health
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/health
+        return_content: true
+      register: acme_hello_verify_health
+
+    - name: The default release is healthy
+      ansible.builtin.assert:
+        that: acme_hello_verify_health.content == "ok 1.0.0\n"
+
+    - name: Fetch the page
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/
+        return_content: true
+      register: acme_hello_verify_page
+
+    - name: The page names the release, the host and the environment
+      ansible.builtin.assert:
+        that:
+          - "'acme-hello 1.0.0' in acme_hello_verify_page.content"
+          - ansible_facts['hostname'] in acme_hello_verify_page.content
+          - "'(molecule)' in acme_hello_verify_page.content"
+
+    - name: Read where current points
+      ansible.builtin.stat:
+        path: /opt/acme-hello/current
+      register: acme_hello_verify_current
+
+    - name: Current is a link to the release
+      ansible.builtin.assert:
+        that:
+          - acme_hello_verify_current.stat.islnk
+          - acme_hello_verify_current.stat.lnk_target == "releases/1.0.0"
+
+    # Without the mount-namespace part (off in the container) the score is about 3; on the VMs,
+    # with it, lower still. 5.0 and above is what systemd calls MEDIUM exposure.
+    - name: Rate the unit's hardening
+      ansible.builtin.command: systemd-analyze security --threshold=49 acme-hello.service
+      changed_when: false

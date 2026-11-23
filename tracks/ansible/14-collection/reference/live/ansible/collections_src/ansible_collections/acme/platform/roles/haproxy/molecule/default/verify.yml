@@ -1,0 +1,63 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check the configuration HAProxy runs with
+      ansible.builtin.command: /usr/sbin/haproxy -c -f /etc/haproxy/haproxy.cfg
+      changed_when: false
+
+    - name: Read the state of the haproxy service
+      ansible.builtin.systemd_service:
+        name: haproxy
+      register: haproxy_verify_unit
+
+    - name: HAProxy is active and enabled
+      ansible.builtin.assert:
+        that:
+          - haproxy_verify_unit.status.ActiveState == "active"
+          - haproxy_verify_unit.status.UnitFileState == "enabled"
+
+    - name: Read the admin socket's metadata
+      ansible.builtin.stat:
+        path: /run/haproxy/admin.sock
+      register: haproxy_verify_socket
+
+    - name: The admin socket exists, group haproxy, mode 0660
+      ansible.builtin.assert:
+        that:
+          - haproxy_verify_socket.stat.issock
+          - haproxy_verify_socket.stat.gr_name == "haproxy"
+          - haproxy_verify_socket.stat.mode == "0660"
+
+    - name: Ask the Runtime API for the servers of backend web
+      ansible.builtin.shell:
+        cmd: set -o pipefail && echo "show servers state web" | socat stdio /run/haproxy/admin.sock
+        executable: /bin/bash
+      register: haproxy_verify_servers
+      changed_when: false
+
+    - name: Both servers are in the backend
+      ansible.builtin.assert:
+        that:
+          - "'web-a' in haproxy_verify_servers.stdout"
+          - "'web-b' in haproxy_verify_servers.stdout"
+
+    - name: Send ten requests through the load balancer
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: haproxy_verify_requests
+      until: haproxy_verify_requests.status == 200
+      retries: 5
+      delay: 2
+      loop: "{{ range(10) | list }}"
+
+    - name: Round robin reached both servers
+      ansible.builtin.assert:
+        that:
+          - "'hello from web-a' in haproxy_verify_bodies"
+          - "'hello from web-b' in haproxy_verify_bodies"
+      vars:
+        haproxy_verify_bodies: "{{ haproxy_verify_requests.results | map(attribute='content') | join }}"

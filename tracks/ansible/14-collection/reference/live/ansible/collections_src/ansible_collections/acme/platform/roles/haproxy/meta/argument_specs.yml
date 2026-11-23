@@ -1,0 +1,33 @@
+---
+argument_specs:
+  main:
+    short_description: HAProxy load balancer with health checks and an admin Runtime API socket
+    options:
+      haproxy_backends:
+        type: dict
+        required: true
+        description: Server name -> address (IP or host name) of every backend server.
+      haproxy_bind:
+        type: str
+        description: Address the frontend binds to ("*" for all).
+      haproxy_frontend_port:
+        type: int
+        description: Port of the frontend.
+      haproxy_backend_name:
+        type: str
+        description: Name of the backend (the Runtime API addresses servers as <backend>/<server>).
+      haproxy_backend_port:
+        type: int
+        description: Port of every backend server.
+      haproxy_health_path:
+        type: str
+        description: Path of the HTTP health check.
+      haproxy_admin_socket:
+        type: path
+        description: Path of the Runtime API socket (level admin).
+      haproxy_admin_group:
+        type: str
+        description: Group of the Runtime API socket; its members may drain and enable servers.
+      haproxy_mount_namespace:
+        type: bool
+        description: Keep the unit's /dev/log bind mount. False only in unprivileged containers.

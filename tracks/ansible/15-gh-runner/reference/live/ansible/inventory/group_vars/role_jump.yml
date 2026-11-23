@@ -1,0 +1,10 @@
+---
+# Role haproxy on the jump host: every web server of the inventory, by private IP (the jump host
+# reaches them over the hub-spoke peering). Built at run time from the inventory, so a rebuilt web
+# VM with a new IP needs no edit: { vm-<prefix>-web-dev-1: 10.1.1.x, ... }.
+haproxy_backends: >-
+  {{ dict(groups['role_web']
+  | zip(groups['role_web'] | map('extract', hostvars, ['private_ipv4_addresses', 0]))) }}
+
+# Role gh_runner (runner.yml): the jump host is the repo's self-hosted runner (an-15).
+gh_runner_repo_url: https://github.com/{{GH_OWNER}}/{{LIVE_REPO}}

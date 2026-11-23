@@ -1,0 +1,4 @@
+---
+# The oldest ansible-core this collection supports (ansible-lint knows the supported lines; the
+# repo itself pins 2.21, which is what the collection is tested with).
+requires_ansible: ">=2.19.0"

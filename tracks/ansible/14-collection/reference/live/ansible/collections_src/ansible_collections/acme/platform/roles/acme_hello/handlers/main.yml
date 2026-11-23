@@ -1,0 +1,7 @@
+---
+# daemon_reload picks up a changed unit file before the restart.
+- name: Restart acme-hello
+  ansible.builtin.systemd_service:
+    name: acme-hello
+    state: restarted
+    daemon_reload: true
