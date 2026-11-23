@@ -35,13 +35,18 @@ env:
   # nature, so a variable. The private key never leaves your machine.
   TF_VAR_learner_ip: ${{ secrets.LEARNER_IP }}
   TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
+  # tf-24: changes to these paths are Terraform's business. A push or PR that touches none of them
+  # (the Ansible track's code, docs) skips plan's work and both apply jobs: no prod approval and no
+  # red run for a README.
+  TF_PATHS: '^(terraform/|\.github/workflows/terraform\.yml$|\.github/scripts/|\.trivyignore\.yaml$|\.tflint\.hcl$)'
   # Dependency order for .github/scripts/stacks.sh. Stacks not listed run afterwards, alphabetically.
   STACK_ORDER: "landing-zone shared env-dev env-prod observability teams/payments"
 
 jobs:
   # "plan" is the required status check (tf-06): it never needs another job, so nothing can run
   # before it, fail and leave it skipped (a skipped required check counts as passed). The apply
-  # jobs only run on main: apply (every stack but env-prod), then apply-prod (tf-24).
+  # jobs only run on main: changes decides whether Terraform has anything to do, then apply
+  # (every stack but env-prod), then apply-prod (tf-24).
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -51,7 +56,22 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the base branch too, for the diff below
+          persist-credentials: false
+      # Did this PR touch Terraform? If not, every step below is skipped and plan still reports
+      # success: it is the required check, and an Ansible-only PR must be able to merge.
+      - name: What changed
+        id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff --name-only "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/changed-files"
+          if grep -qE "$TF_PATHS" "$RUNNER_TEMP/changed-files"; then changed=true; else changed=false; fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "Terraform changes in this PR: $changed"
       - name: Find stacks
+        if: steps.changes.outputs.changed == 'true'
         id: stacks
         run: |
           # On its own line so a failing stacks.sh fails the step (bash -e); echo would hide it.
@@ -59,14 +79,17 @@ jobs:
           if [ -z "$list" ]; then echo "::error::no stacks found under terraform/"; exit 1; fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: hashicorp/setup-terraform@v3
+        if: steps.changes.outputs.changed == 'true'
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
       - name: terraform fmt
+        if: steps.changes.outputs.changed == 'true'
         run: terraform fmt -check -recursive -diff terraform
       # tf-17: module tests run here, in the required plan job, not in a job of their own.
       # mock_provider tests need no Azure; a failing test fails the job before any plan.
       - name: terraform test (modules)
+        if: steps.changes.outputs.changed == 'true'
         run: |
           if [ ! -d terraform/modules ]; then echo "no modules under terraform/modules"; exit 0; fi
           for d in $(find terraform/modules -name '*.tftest.hcl' -path '*/tests/*' -exec dirname {} \; | xargs -r -n1 dirname | sort -u); do
@@ -77,15 +100,18 @@ jobs:
           done
       # tf-18: lint and scan every stack and module; any finding fails the plan job.
       - uses: terraform-linters/setup-tflint@v4
+        if: steps.changes.outputs.changed == 'true'
         with:
           tflint_version: v0.66.0
       - name: tflint
+        if: steps.changes.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }} # tflint --init downloads the azurerm ruleset from GitHub
         run: |
           tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
           tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl" --chdir terraform
       - name: trivy config scan
+        if: steps.changes.outputs.changed == 'true'
         env:
           TRIVY_VERSION: "0.76.2"
         run: |
@@ -99,11 +125,13 @@ jobs:
       # Log in to Azure only now: the steps above (formatting, tests, linters, scanners) never
       # run with an authenticated session.
       - uses: azure/login@v2
+        if: steps.changes.outputs.changed == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: terraform init, validate, plan
+        if: steps.changes.outputs.changed == 'true'
         id: plan
         env:
           STACKS: ${{ steps.stacks.outputs.list }}
@@ -149,14 +177,45 @@ jobs:
           fi
           exit "$rc"
       - name: Comment the plan on the PR
-        if: always() && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure')
+        if: always() && steps.changes.outputs.changed == 'true' && (steps.plan.outcome == 'success' || steps.plan.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
 
+  # Push and manual runs (tf-24): did this push change anything Terraform cares about? A manual run
+  # (workflow_dispatch), a branch's first push and a push whose "before" commit is gone (a force
+  # push) always count as a change. A job of its own: plan runs on pull requests only.
+  changes:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the "before" commit too
+          persist-credentials: false
+      - name: What changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          changed=true
+          if [ "$EVENT" = push ] && [[ ! "$BEFORE" =~ ^0*$ ]] &&
+            git diff --name-only "$BEFORE" "$GITHUB_SHA" > "$RUNNER_TEMP/changed-files" 2>/dev/null; then
+            if ! grep -qE "$TF_PATHS" "$RUNNER_TEMP/changed-files"; then changed=false; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "Terraform changes: $changed"
+
   apply:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: changes
+    # Skipped jobs request no approval and leave the run green.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.changes.outputs.changed == 'true'
     runs-on: ubuntu-latest
     # Applies queue up; never cancel one half-way.
     concurrency:
@@ -169,6 +228,8 @@ jobs:
       prod: ${{ steps.stacks.outputs.prod }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Find stacks
         id: stacks
         env:
@@ -209,8 +270,8 @@ jobs:
   # environment gets the OIDC subject <prefix>:environment:prod, which only the federated
   # credential gh-env-prod (tf-04) trusts.
   apply-prod:
-    needs: apply
-    if: needs.apply.outputs.prod == 'true'
+    needs: [changes, apply]
+    if: needs.changes.outputs.changed == 'true' && needs.apply.outputs.prod == 'true'
     runs-on: ubuntu-latest
     environment: prod
     # Its own queue: waiting for an approval must not hold up dev applies.
@@ -222,6 +283,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}

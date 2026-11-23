@@ -1,7 +1,7 @@
 ---
 id: tf-24
 title: Prod, gated
-target_minutes: 25
+target_minutes: 30
 requires: [tf-23]
 ---
 # tf-24 Prod, gated
@@ -11,7 +11,8 @@ prod, under two conditions: prod is built from the same module releases as dev, 
 reaches prod without a human approving that exact run. The `prod` environment from tf-06 and
 the `gh-env-prod` credential from tf-04 have waited for this.
 
-This task gets 25 minutes: a stack change and a pipeline change, and the first approval.
+This task gets 30 minutes: a stack change, a pipeline change (two new jobs and a change filter),
+and the first approval.
 
 ## Deliverables
 
@@ -29,7 +30,17 @@ This task gets 25 minutes: a stack change and a pipeline change, and the first a
   - a third job `apply-prod`: `needs: apply`, runs only when `env-prod` was selected,
     `environment: prod`, applies `terraform/env-prod`. Its own concurrency group, so a run
     waiting for approval doesn't block dev applies.
-  - `plan` stays as it is: it plans every stack, env-prod included, and needs no other job
+  - `plan` still plans every stack, env-prod included, and needs no other job
+  - **only Terraform changes reach Azure.** The repo will soon hold more than Terraform (the
+    Ansible track's code, docs). A pull request or push that touches none of `terraform/`,
+    `.github/workflows/terraform.yml`, `.github/scripts/`, `.trivyignore.yaml` or `.tflint.hcl`
+    must not run a plan, an apply or ask for a prod approval, and must stay green:
+    - in `plan`, a first step compares the PR with its base (`actions/checkout` with
+      `fetch-depth: 0`, then `git diff --name-only origin/<base>...HEAD`) and every later step
+      runs only when Terraform changed; the job itself still succeeds (it's the required check)
+    - a job `changes` (pushes and manual runs) does the same for the push
+      (`github.event.before`..`github.sha`); a manual run, a first push or a missing `before`
+      commit always counts as a change. `apply` and `apply-prod` run only when it says so.
 - [ ] One PR. Merge it, watch `apply` finish, then approve `apply-prod` (Actions tab,
       **Review deployments**).
 
@@ -40,4 +51,4 @@ deployment whose status is `success`, both vaults exist, and `./lab.sh grade` pa
 
 From now on `./lab.sh resume` also waits for your approval before it rebuilds prod.
 
-Target: 25 minutes.
+Target: 30 minutes.

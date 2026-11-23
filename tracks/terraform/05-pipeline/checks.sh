@@ -1,5 +1,10 @@
 # tf-05 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 export TF05_WF=.github/workflows/terraform.yml TF05_REPO="$GH_OWNER/$LIVE_REPO"
 export TF05_TAGS_JQ='.location == env.LOCATION and .tags.owner == env.OWNER_TAG and .tags.env == "hub" and .tags.managed_by == "terraform"'
 export TF05_VARS_JQ='(map({(.name): .value}) | add // {}) as $v | $v.AZURE_SUBSCRIPTION_ID == env.SUBSCRIPTION_ID and $v.AZURE_TENANT_ID == env.TENANT_ID and $v.AZURE_CLIENT_ID == env.TF05_CLIENT_ID'
@@ -49,7 +54,7 @@ check "workflow terraform.yml is active on GitHub" \
   "no active workflow terraform.yml in $TF05_REPO (is it merged to main?)"
 
 check "latest completed terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF05_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF05_REPO"' \
   "the newest completed terraform.yml run on main is not green; open it in the Actions tab"
 
 # grep -c reads all of the paginated output (grep -q could close the pipe early under pipefail).

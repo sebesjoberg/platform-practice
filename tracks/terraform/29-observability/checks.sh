@@ -1,5 +1,10 @@
 # tf-29 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # State reads: spoke_state_jq <key> <jq filter> (tracks/terraform/lib/spoke-ids.sh).
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/spoke-ids.sh"
@@ -64,5 +69,5 @@ check "the subscription's Activity Log still goes to $TF29_LAW" \
   "expected a subscription diagnostic setting with workspace law-$PREFIX-platform and at least Administrative, Security and Policy enabled"
 
 check "latest completed terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF29_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF29_REPO"' \
   "the newest completed terraform.yml run on main is not green; open it in the Actions tab"

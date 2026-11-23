@@ -1,5 +1,10 @@
 # tf-30 checks (sourced by the grader; cwd = LIVE_DIR; MODULES_DIR = the modules repo clone)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 export TF30_REPO="$GH_OWNER/$LIVE_REPO" TF30_MODS="$GH_OWNER/$MODULES_REPO"
 export TF30_DEPENDABOT=.github/dependabot.yml
 export TF30_SRC_RE="git::https://github\\.com/$GH_OWNER/$MODULES_REPO\\.git//[^?\"]+\\?ref=v[0-9]+\\.[0-9]+\\.[0-9]+"
@@ -91,5 +96,5 @@ check "Dependabot has the secrets BUDGET_EMAIL and LEARNER_IP" \
   "gh secret set --app dependabot BUDGET_EMAIL -R $TF30_REPO --body <your email>, and the same for LEARNER_IP: Dependabot PRs get no Actions secrets"
 
 check "latest completed terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF30_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF30_REPO"' \
   "the newest completed terraform.yml run on main is not green; open it in the Actions tab"

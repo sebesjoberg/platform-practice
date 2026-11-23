@@ -42,6 +42,8 @@ jobs:
       issues: write # open, comment on and close the drift issue
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Find stacks
         id: stacks
         run: |

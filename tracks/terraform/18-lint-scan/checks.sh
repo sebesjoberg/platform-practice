@@ -1,5 +1,10 @@
 # tf-18 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # Pipeline helpers shared with tf-17.
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
@@ -7,7 +12,7 @@ export TF18_WF=.github/workflows/terraform.yml TF18_REPO="$GH_OWNER/$LIVE_REPO"
 # a tflint run other than tflint --init (those lines are dropped first)
 export TF18_TFLINT_RE='(^|[[:space:]"])tflint([[:space:]]|$)'
 export TF18_TRIVY_RE='trivy[^#]*[[:space:]]config[[:space:]]|scan-type:[[:space:]]*"?config'
-export -f ci_job ci_plan_job ci_before_login ci_pr_green_or_caught_up
+export -f ci_job ci_plan_job ci_before_login ci_pr_green_or_caught_up ci_run_planned
 
 check_code ".tflint.hcl enables the azurerm ruleset" \
   '[[ -f .tflint.hcl ]] && grep -qE "source[[:space:]]*=[[:space:]]*\"github.com/terraform-linters/tflint-ruleset-azurerm\"" .tflint.hcl && grep -qE "^plugin[[:space:]]+\"azurerm\"" .tflint.hcl' \
@@ -26,5 +31,5 @@ check "the latest pull request run of terraform.yml succeeded (or a newer catchu
   "the newest completed pull_request run of terraform.yml in $TF18_REPO is not green: read the tflint and trivy steps"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF18_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF18_REPO"' \
   "the newest completed terraform.yml run on main in $TF18_REPO is not green (is the PR merged?)"

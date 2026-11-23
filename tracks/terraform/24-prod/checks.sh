@@ -1,5 +1,10 @@
 # tf-24 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/app-env.sh"
 # shellcheck source=/dev/null
@@ -23,6 +28,13 @@ tf24_prod_job() {
   done
   [[ $found -eq 0 ]] && ci_job "$1" apply | grep -vE '^[[:space:]]*#' | grep -q env-prod
 }
+# tf24_change_gate <workflow>: plan diffs the PR against its base (git diff), and apply runs only
+# when a job output says Terraform changed (job-level if: on needs.<job>.outputs.<name>).
+tf24_change_gate() {
+  ci_job "$1" plan | grep -vE '^[[:space:]]*#' | grep -cE 'git diff' >/dev/null &&
+    ci_job "$1" apply | grep -vE '^[[:space:]]*#' | grep -cE '^[[:space:]]+if:.*needs\.[A-Za-z0-9_-]+\.outputs\.' >/dev/null
+}
+export -f tf24_change_gate
 export -f appenv_kv_name appenv_kv_id appenv_kv_ok appenv_pe_ok appenv_identity_pid role_on ci_job ci_job_ids ci_plan_independent tf24_prod_job
 
 check_code "env-prod uses spoke v2 (vnet_cidr) and app-env from the modules repo" \
@@ -36,6 +48,10 @@ check_code "env-prod gives its app identity AcrPull on the shared registry" \
 check_code "a job in the prod environment applies env-prod after apply, and apply skips it" \
   'tf24_prod_job "$TF24_WF"' \
   "add a job (apply-prod) with environment: prod and needs: apply that applies terraform/env-prod, and leave env-prod out of the apply job's stack list"
+
+check_code "only Terraform changes plan, apply or ask for a prod approval" \
+  'tf24_change_gate "$TF24_WF"' \
+  "plan must diff the PR against its base (git diff) and skip its steps when no Terraform path changed; apply (and apply-prod) need a job-level if: on a job output that says Terraform changed"
 
 check_code "plan still needs no other job" \
   'ci_plan_independent "$TF24_WF" && [[ "$(ci_job_ids "$TF24_WF" | grep -c .)" -ge 3 ]]' \
@@ -58,5 +74,5 @@ check "id-$PREFIX-app-prod has Key Vault Secrets User on its vault and AcrPull o
   "expected identity id-$PREFIX-app-prod in rg-$PREFIX-prod with Key Vault Secrets User on $(appenv_kv_name prod) and AcrPull on acr$PREFIX$SUFFIX"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF24_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF24_REPO"' \
   "the newest completed terraform.yml run on main in $TF24_REPO is not green (a rejected or timed-out apply-prod counts as failed)"

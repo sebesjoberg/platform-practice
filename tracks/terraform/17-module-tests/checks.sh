@@ -22,7 +22,7 @@ tf17_tests_plan_only() {
   done
   [[ $total -ge 2 ]]
 }
-export -f spoke_module_dir tf17_tests_plan_only ci_job ci_job_ids ci_plan_job ci_plan_independent ci_before_login ci_pr_green_or_caught_up
+export -f spoke_module_dir tf17_tests_plan_only ci_job ci_job_ids ci_plan_job ci_plan_independent ci_before_login ci_pr_green_or_caught_up ci_run_planned
 
 check_code "module tests mock azurerm and only plan" \
   'tf17_tests_plan_only "$(spoke_module_dir)"' \

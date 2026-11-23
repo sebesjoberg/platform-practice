@@ -1,5 +1,10 @@
 # tf-26 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # Spoke helpers: spoke_state_jq <key> <jq filter> downloads a state blob and evaluates the filter.
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/spoke-ids.sh"
@@ -48,5 +53,5 @@ check "$TF26_SA was imported, not recreated" \
   "the creation time of $TF26_SA differs from $TF26_SNAP: the account was deleted and created again, and the finance team's files with it"
 
 check "latest completed terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF26_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF26_REPO"' \
   "the newest completed terraform.yml run on main is not green; open it in the Actions tab"

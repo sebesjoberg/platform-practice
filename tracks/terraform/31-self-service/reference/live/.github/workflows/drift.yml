@@ -31,7 +31,6 @@ env:
   TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
   TF_VAR_learner_ip: ${{ secrets.LEARNER_IP }}
   TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
-  TF_VAR_github_token: ${{ github.token }} # tf-31: the team stacks' GitHub API lookup
   STACK_ORDER: "landing-zone shared env-dev env-prod observability teams/payments"
 
 jobs:
@@ -43,6 +42,8 @@ jobs:
       issues: write # open, comment on and close the drift issue
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Find stacks
         id: stacks
         run: |
@@ -62,6 +63,7 @@ jobs:
         id: plan
         env:
           STACKS: ${{ steps.stacks.outputs.list }}
+          TF_VAR_github_token: ${{ github.token }} # tf-31: the team stacks' GitHub API lookup
         run: |
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes (drift).
           report="$RUNNER_TEMP/drift.md"

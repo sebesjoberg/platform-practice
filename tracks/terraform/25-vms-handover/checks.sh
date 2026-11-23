@@ -1,5 +1,10 @@
 # tf-25 checks (sourced by the grader; cwd = LIVE_DIR; MODULES_DIR = the modules repo clone)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/app-env.sh"
 export TF25_LIVE="$GH_OWNER/$LIVE_REPO" TF25_MODS="$GH_OWNER/$MODULES_REPO"
@@ -108,5 +113,5 @@ check "vm-$PREFIX-web-dev-1 is reachable through the jump VM and reaches the Ubu
   "ssh -J $TF25_USER@<jump_public_ip> $TF25_USER@<web private IP> failed, or the web VM can't reach archive.ubuntu.com (apt needs outbound internet)"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF25_LIVE/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF25_LIVE"' \
   "the newest completed terraform.yml run on main in $TF25_LIVE is not green"

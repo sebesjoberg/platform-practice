@@ -2,6 +2,8 @@
 # no check_code: the incident and its fix are state, not code (a lease on a blob, a CI run); the
 # repo doesn't change.
 
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
 export TF28_SA="st${PREFIX}tfstate$SUFFIX" TF28_REPO="$GH_OWNER/$LIVE_REPO"
 export TF28_SNAP="$LAB_HOME/snapshots/tf-28.lock"
 
@@ -20,14 +22,13 @@ tf28_lock_gone() {
   [[ "$held" != "$id" ]]
 }
 # tf28_green_since: a terraform.yml run created after the incident (or ever, without a snapshot)
-# completed successfully.
+# applied successfully (lib/ci-runs.sh: runs that skipped apply don't count).
 tf28_green_since() {
-  local since=0 iso
+  local since=0
   [[ -s "$TF28_SNAP" ]] && since="$(sed -n 2p "$TF28_SNAP")"
-  iso="$(date -u -d "@$since" +%Y-%m-%dT%H:%M:%SZ)"
-  [[ "$(gh api "repos/$TF28_REPO/actions/workflows/terraform.yml/runs?status=success&created=%3E%3D$iso&per_page=1" --jq .total_count)" -ge 1 ]]
+  ci_applied_since "$TF28_REPO" "$since"
 }
-export -f tf28_blob tf28_lock_gone tf28_green_since
+export -f tf28_blob tf28_lock_gone tf28_green_since ci_applied_since ci_run_apply
 
 check "the lease on env-dev.tfstate is no longer held" \
   '[[ "$(tf28_blob show --query properties.lease.state -o tsv)" =~ ^(available|broken|expired)$ ]]' \
@@ -37,6 +38,6 @@ check "the stale lock is gone from the state blob" \
   'tf28_lock_gone' \
   "the lock info of the incident is still in env-dev.tfstate's metadata (terraformlockid): terraform force-unlock <ID>"
 
-check "a terraform.yml run that started after the incident is green" \
+check "a terraform.yml run that started after the incident applied successfully" \
   'tf28_green_since' \
   "no successful terraform.yml run since the lock appeared: gh workflow run terraform.yml -f stacks=env-dev"

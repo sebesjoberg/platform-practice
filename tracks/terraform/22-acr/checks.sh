@@ -1,5 +1,10 @@
 # tf-22 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/app-env.sh"
 # shellcheck source=/dev/null
@@ -35,5 +40,5 @@ check "$TF22_ACR holds hello:1.0" \
   "import it: az acr import --name $TF22_ACR --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF22_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF22_REPO"' \
   "the newest completed terraform.yml run on main in $TF22_REPO is not green"

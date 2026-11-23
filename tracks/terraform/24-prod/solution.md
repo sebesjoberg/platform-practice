@@ -45,10 +45,70 @@ module "app_env" {
 `terraform/env-prod/acr.tf`: the same as env-dev's. `versions.tf`: env-dev's with
 `key = "env-prod.tfstate"`. `variables.tf`: add `suffix`.
 
-`.github/workflows/terraform.yml`, the apply job's stack step and its output:
+`.github/workflows/terraform.yml`. At workflow level, the paths that are Terraform's business:
+
+```yaml
+env:
+  # ...
+  TF_PATHS: '^(terraform/|\.github/workflows/terraform\.yml$|\.github/scripts/|\.trivyignore\.yaml$|\.tflint\.hcl$)'
+```
+
+In `plan`, a deeper checkout and a first step; every later step gets the same `if:` (the comment
+step: `if: always() && steps.changes.outputs.changed == 'true' && (...)`):
+
+```yaml
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: What changed
+        id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff --name-only "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/changed-files"
+          if grep -qE "$TF_PATHS" "$RUNNER_TEMP/changed-files"; then changed=true; else changed=false; fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+      - name: Find stacks
+        if: steps.changes.outputs.changed == 'true'
+        # ... and so on for every step
+```
+
+A job for pushes and manual runs:
+
+```yaml
+  changes:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: What changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          changed=true
+          if [ "$EVENT" = push ] && [[ ! "$BEFORE" =~ ^0*$ ]] &&
+            git diff --name-only "$BEFORE" "$GITHUB_SHA" > "$RUNNER_TEMP/changed-files" 2>/dev/null; then
+            if ! grep -qE "$TF_PATHS" "$RUNNER_TEMP/changed-files"; then changed=false; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+```
+
+The apply job's gate, its stack step and its output:
 
 ```yaml
   apply:
+    needs: changes
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.changes.outputs.changed == 'true'
     # ... as before
     outputs:
       prod: ${{ steps.stacks.outputs.prod }}
@@ -74,8 +134,8 @@ The new job:
 
 ```yaml
   apply-prod:
-    needs: apply
-    if: needs.apply.outputs.prod == 'true'
+    needs: [changes, apply]
+    if: needs.changes.outputs.changed == 'true' && needs.apply.outputs.prod == 'true'
     runs-on: ubuntu-latest
     environment: prod
     concurrency:

@@ -1,5 +1,10 @@
 # tf-21 checks (sourced by the grader; cwd = LIVE_DIR; MODULES_DIR = the modules repo clone)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/app-env.sh"
 export TF21_LIVE="$GH_OWNER/$LIVE_REPO" TF21_MODS="$GH_OWNER/$MODULES_REPO"
@@ -64,5 +69,5 @@ check "the secret greeting is in the vault and you can read it" \
   "expected secret greeting in $(appenv_kv_name dev), readable by you (bootstrap gives you Key Vault Secrets Officer on the subscription; new assignments can take a few minutes)"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF21_LIVE/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF21_LIVE"' \
   "the newest completed terraform.yml run on main in $TF21_LIVE is not green (is v2.1.0 pushed? did bootstrap get applied before the merge?)"

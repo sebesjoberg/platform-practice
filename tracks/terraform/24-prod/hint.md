@@ -28,5 +28,11 @@ Traps:
   exactly as env-dev does. Moving spoke to `v2.0.0` renames the input (`vnet_cidr`) and plans
   `No changes.` for the spoke resources; the plan adds only the app-env resources and
   `AcrPull`.
+- **A skipped job asks nobody.** Gate `apply` and `apply-prod` with job-level `if:` on the
+  `changes` job's output: a skipped job never requests a deployment approval, and the run stays
+  green. Inside `plan`, skip *steps*, never the job: `plan` must report success for a PR that
+  only touches the Ansible code, or that PR could never merge. Write the diff to a file and
+  `grep` the file: `git diff … | grep -q …` can fail under `bash -o pipefail` when grep stops
+  reading early.
 - **Approvals and pause.** `./lab.sh pause` destroys env-prod; the next resume's run waits for
   your approval before it rebuilds it.

@@ -1,5 +1,10 @@
 # tf-20 checks (sourced by the grader; cwd = LIVE_DIR; MODULES_DIR = the modules repo clone)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 export TF20_LIVE="$GH_OWNER/$LIVE_REPO" TF20_MODS="$GH_OWNER/$MODULES_REPO"
 export TF20_SRC="source[[:space:]]*=[[:space:]]*\"git::https://github\\.com/$GH_OWNER/$MODULES_REPO\\.git//spoke\\?ref="
 export TF20_FILES_JQ='.[] | select(.type == "file" and (.name | endswith(".tf"))) | .path'
@@ -45,5 +50,5 @@ check "v2.0.0 has vnet_cidr instead of address_space; v1.0.0 is unchanged" \
   "spoke/ at v2.0.0 must declare variable \"vnet_cidr\" and no \"address_space\"; v1.0.0 must still declare \"address_space\" (never move a released tag)"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF20_LIVE/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF20_LIVE"' \
   "the newest completed terraform.yml run on main in $TF20_LIVE is not green (merged? is v2.0.0 pushed?)"

@@ -1,5 +1,10 @@
 # tf-19 checks (sourced by the grader; cwd = LIVE_DIR; MODULES_DIR = the modules repo clone)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 export TF19_LIVE="$GH_OWNER/$LIVE_REPO" TF19_MODS="$GH_OWNER/$MODULES_REPO"
 # A spoke source in the modules repo, pinned to a release tag vX.Y.Z (env-dev moves to v2 in
 # tf-20, so the version isn't fixed here; the tag check below wants v1.0.0).
@@ -35,5 +40,5 @@ check "v1.0.0 contains the spoke module" \
   "the tag v1.0.0 has no spoke/*.tf: tag the commit that holds the module"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF19_LIVE/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF19_LIVE"' \
   "the newest completed terraform.yml run on main in $TF19_LIVE is not green (merged? can CI reach $TF19_MODS at v1.0.0?)"

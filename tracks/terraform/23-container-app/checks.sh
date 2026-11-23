@@ -1,5 +1,10 @@
 # tf-23 checks (sourced by the grader; cwd = LIVE_DIR)
 
+# Pipeline runs that applied something (tf-24 skips apply when no Terraform path changed).
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/ci-runs.sh"
+export -f ci_main_green ci_run_apply
+
 export TF23_REPO="$GH_OWNER/$LIVE_REPO" TF23_RG="rg-$PREFIX-dev"
 export TF23_CAE="cae-$PREFIX-dev" TF23_CA="ca-$PREFIX-hello-dev"
 export TF23_LOGIN="acr$PREFIX$SUFFIX.azurecr.io" TF23_KV="kv-$PREFIX-dev-$SUFFIX"
@@ -33,5 +38,5 @@ check "https://<fqdn>/ of $TF23_CA answers 200" \
   "curl -fsS https://\$(az containerapp show -g $TF23_RG -n $TF23_CA --query properties.configuration.ingress.fqdn -o tsv)/ must answer 200 (check the revision's status and system logs: az containerapp logs show --type system)"
 
 check "the latest terraform run on main succeeded" \
-  '[[ "$(gh api "repos/$TF23_REPO/actions/workflows/terraform.yml/runs?branch=main&status=completed&per_page=1" --jq ".workflow_runs[0].conclusion")" == success ]]' \
+  'ci_main_green "$TF23_REPO"' \
   "the newest completed terraform.yml run on main in $TF23_REPO is not green"
