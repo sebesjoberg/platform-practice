@@ -146,12 +146,6 @@ fake_azure() {
   [[ "$output" != *"demo-02"*"Second"*"done"* ]]
 }
 
-@test "later commands are stubs" {
-  run "$LAB" selftest
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"not implemented yet"* ]]
-}
-
 @test "init rejects unsafe config values" {
   rm "$LAB_HOME/config.env"
   fake_azure

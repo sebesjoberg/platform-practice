@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  push:
+    branches: [main, feat/**]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.tf-plugin-cache
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local
+          key: dev-tools-${{ runner.os }}-${{ hashFiles('scripts/install-dev-tools.sh') }}
+      - name: Install dev tools
+        run: scripts/install-dev-tools.sh
+      - name: Add tools to PATH
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/platform-practice/venv/bin" >> "$GITHUB_PATH"
+      - name: shellcheck
+        run: shellcheck lab.sh lib/*.sh tests/*.sh scripts/*.sh
+      - name: bats
+        run: bats tests/
+      - name: lint tracks
+        run: tests/lint-tracks.sh
+
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Last task id of each track
+        id: m
+        run: |
+          ids=()
+          for t in tracks/*/; do
+            [ -d "$t" ] || continue
+            last=$(find "$t" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)
+            [ -n "$last" ] && [ -f "$last/task.md" ] || continue
+            id=$(awk 'NR==1 && $0!="---" {exit} NR>1 && $0=="---" {exit} /^id:/ {sub(/^id:[ \t]*/, ""); sub(/\r$/, ""); print; exit}' "$last/task.md")
+            [ -n "$id" ] && ids+=("$id")
+          done
+          echo "matrix=$(jq -nc '$ARGS.positional' --args "${ids[@]}")" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: [plan, lint-test]
+    if: needs.plan.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        id: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local
+          key: dev-tools-${{ runner.os }}-${{ hashFiles('scripts/install-dev-tools.sh') }}
+      - uses: actions/cache@v4
+        with:
+          path: .tf-plugin-cache
+          key: tf-plugins-${{ runner.os }}-${{ hashFiles('tracks/**/*.tf') }}
+          restore-keys: tf-plugins-${{ runner.os }}-
+      - name: Install dev tools
+        run: scripts/install-dev-tools.sh
+      - name: Prepare
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate reference of ${{ matrix.id }}
+        run: tests/validate-reference.sh "${{ matrix.id }}" --no-molecule
+
+  molecule:
+    needs: [plan, lint-test]
+    if: needs.plan.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        id: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local
+          key: dev-tools-${{ runner.os }}-${{ hashFiles('scripts/install-dev-tools.sh') }}
+      - name: Install dev tools
+        run: scripts/install-dev-tools.sh
+      - name: Prepare
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate reference of ${{ matrix.id }} with molecule
+        run: tests/validate-reference.sh "${{ matrix.id }}"

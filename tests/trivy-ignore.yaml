@@ -1,0 +1,8 @@
+# Allow-list for `trivy config --severity HIGH,CRITICAL` in tests/validate-reference.sh.
+# Every entry needs a statement (the reason). Format:
+#   misconfigurations:
+#     - id: AVD-AZU-0013
+#       paths:
+#         - "terraform/shared/main.tf"
+#       statement: "why this is acceptable for a practice lab"
+misconfigurations: []
