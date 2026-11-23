@@ -1,0 +1,13 @@
+# Trivy findings this platform accepts on purpose (tf-18). Every entry says why in its
+# statement; a finding without a good reason gets fixed instead. Paths are relative to the
+# scanned directory, terraform/. The plan job runs:
+#   trivy config --exit-code 1 --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml terraform
+misconfigurations:
+  - id: AZU-0012
+    paths:
+      - "bootstrap/state.tf"
+    statement: >-
+      The state account keeps its public endpoint with default action Allow: GitHub-hosted
+      runners and our WSL machines have no fixed IPs, and there is no runner inside the VNet
+      before tf-25. Access is Entra ID only (shared keys disabled, no anonymous blob access,
+      TLS 1.2). Revisit when CI runs on the self-hosted runner.
