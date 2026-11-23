@@ -55,7 +55,7 @@ tf25_ssh() {
 export -f appenv_kv_id appenv_kv_name role_on tf25_vm tf25_jump_ip tf25_web_ip tf25_jump_pid tf25_ssh
 
 check_code "the modules repo has linux-vm: Ubuntu 24.04, SSH key only" \
-  'm="${MODULES_DIR:-}/linux-vm" && grep -qsE "^resource[[:space:]]+\"azurerm_linux_virtual_machine\"" "$m"/*.tf && grep -qsE "^[[:space:]]*admin_ssh_key[[:space:]]*\{" "$m"/*.tf && grep -qsF "ubuntu-24_04-lts" "$m"/*.tf && ! grep -qsE "^[[:space:]]*(disable_password_authentication[[:space:]]*=[[:space:]]*false|admin_password[[:space:]]*=)" "$m"/*.tf' \
+  'm="${MODULES_DIR:-}/linux-vm" && grep -qsE "^resource[[:space:]]+\"azurerm_linux_virtual_machine\"" "$m"/*.tf && grep -qsE "^[[:space:]]*(admin_ssh_key[[:space:]]*\{|dynamic[[:space:]]+\"admin_ssh_key\")" "$m"/*.tf && grep -qsF "ubuntu-24_04-lts" "$m"/*.tf && ! grep -qsE "^[[:space:]]*(disable_password_authentication[[:space:]]*=[[:space:]]*false|admin_password[[:space:]]*=)" "$m"/*.tf' \
   "write $MODULES_DIR/linux-vm/main.tf: azurerm_linux_virtual_machine from ubuntu-24_04-lts with an admin_ssh_key block, no admin_password, password authentication off"
 
 check_code "CHANGELOG.md has a 2.2.0 entry for linux-vm" \

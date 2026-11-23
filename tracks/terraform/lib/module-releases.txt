@@ -2,10 +2,12 @@
 #   <tag> <task id>
 # Read by tracks/terraform/lib/modules-tag.sh (catchup creates these tags) and by
 # tests/validate-reference.sh (a stack pinning an older release is validated against that
-# task's reference). A task that releases a new module version adds its line here.
+# task's reference). A task that releases a new module version adds its line here, also from
+# another track (cap-01, the capstone, releases v3.2.0): modules-tag.sh reads only this file.
 v1.0.0 tf-19
 v2.0.0 tf-20
 v2.1.0 tf-21
 v2.2.0 tf-25
 v3.0.0 tf-30
 v3.1.0 tf-31
+v3.2.0 cap-01

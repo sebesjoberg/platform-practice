@@ -1,0 +1,24 @@
+---
+# First contact with a VM that Terraform has just built (cap-01), imported by site.yml after the
+# guard. CI on the runner logs in as ops (ci/runner.yml), but ops only exists once role base has
+# run: a new VM has just its admin user azureuser, which Terraform authorized for gh-runner's key
+# too (RUNNER_SSH_PUBLIC_KEY). So: try the usual login, and where it fails, log in as azureuser
+# for the rest of this run; role base creates ops, and the next run uses ops everywhere.
+# Only CI sets acme_ci_first_contact_user. Runs from your machine skip both tasks and connect to
+# nothing here: they log in as azureuser with your lab key anyway.
+- name: Log in as the admin user where ops doesn't exist yet
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Try the usual login
+      ansible.builtin.ping:
+      ignore_unreachable: true
+      register: first_contact_ping
+      when: acme_ci_first_contact_user is defined
+
+    - name: Use the admin user on hosts the usual login can't reach yet
+      ansible.builtin.set_fact:
+        acme_ci_login: "{{ acme_ci_first_contact_user }}"
+      when:
+        - acme_ci_first_contact_user is defined
+        - first_contact_ping is unreachable
