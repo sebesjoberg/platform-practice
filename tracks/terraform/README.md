@@ -47,10 +47,16 @@ Later tasks and their checks assume these. Keep them in your own code.
   Shared keys are disabled on the account.
 - **Stacks.** A stack is a directory under `terraform/` with an `azurerm` backend. The pipeline
   finds stacks on its own with `.github/scripts/stacks.sh`, a step in both the `plan` and the
-  `apply` job; the workflow has exactly these two jobs. Stacks run in the order of
+  `apply` job. Stacks run in the order of
   `STACK_ORDER` in `.github/workflows/terraform.yml` (`landing-zone shared env-dev env-prod
   observability teams/payments`), then any others alphabetically. `bootstrap` is applied locally only:
   CI never manages its own identity. Nothing under `terraform/modules/` is ever a stack (tf-15).
+- **Jobs.** `plan` (pull requests) plans every stack and is the required status check (tf-06),
+  so it never `needs:` another job: a job it waited for could fail and leave it skipped, and a
+  skipped required check counts as passed. `apply` (pushes to `main`, manual runs) applies the
+  selected stacks. From tf-24 `apply` skips `env-prod`, and a third job `apply-prod`
+  (`needs: apply`, `environment: prod`) applies it after the `prod` environment's reviewer
+  approves; its OIDC subject `…:environment:prod` matches the credential `gh-env-prod`.
 - **Modules.** The `spoke` module lives in `terraform/modules/spoke` from tf-15, and from tf-19
   in your public modules repo `<prefix>-terraform-modules` (directory `spoke/`, cloned to
   `MODULES_DIR`). Stacks call it as `module "spoke"`, so state addresses stay `module.spoke.*`
@@ -58,15 +64,29 @@ Later tasks and their checks assume these. Keep them in your own code.
   `git::https://github.com/<owner>/<prefix>-terraform-modules.git//spoke?ref=vX.Y.Z`. Released
   tags never move; a breaking change is a new major version with a `CHANGELOG.md` entry (tf-20).
   Module tests (`terraform test`, mock providers only) run in the plan job until tf-19, then in
-  the modules repo's CI.
+  the modules repo's CI. A release tags the whole repo: `app-env` arrives in `v2.1.0` (tf-21),
+  `linux-vm` in `v2.2.0` (tf-25), and a stack may pin different releases for different modules
+  (`module "app_env"`, `module "jump"`, `module "web"`). The modules repo's CI scans its modules
+  with trivy; the platform repo's scan skips downloaded modules (`--tf-exclude-downloaded-modules`).
 - **Tags on every resource group.** `owner = "<your owner tag>"`, `env`, `managed_by =
   "terraform"`. The `env` values are `platform` (bootstrap: state and CI identity), `hub`
-  (landing-zone hub and shared services), `dev` and `prod`.
+  (landing-zone hub and shared services), `dev` and `prod`. VMs also carry `role` (`jump`,
+  `web`) and `env` (`hub`, `dev`): the Ansible track's dynamic inventory groups by them.
 - **Inputs.** From tf-07 stacks declare validated variables with the lab values as defaults,
   so CI needs no tfvars file (`*.tfvars` is gitignored and the repo is public). The one
   personal value, the budget alert address, is the repo variable `BUDGET_EMAIL`, which the
-  workflow passes as `TF_VAR_budget_email` (tf-12). Export `TF_VAR_budget_email` in your
-  shell before running landing-zone locally.
+  workflow passes as `TF_VAR_budget_email` (tf-12). From tf-25 two more: `LEARNER_IP` (your
+  public IP, the only SSH source for the jump VM; `sensitive = true`) and `SSH_PUBLIC_KEY` (the
+  public half of `~/.ssh/<prefix>_lab`; the private key never goes into a repo), passed as
+  `TF_VAR_learner_ip` and `TF_VAR_ssh_public_key`. Export the `TF_VAR_*` values in your shell
+  before running those stacks locally (`./lab.sh pause` and `nuke` fill in harmless values).
+- **Workloads.** Each environment's identity and Key Vault come from the `app-env` module
+  (tf-21). Vaults use RBAC, 7 days of soft delete and no purge protection, and the env stacks
+  set `features { key_vault { purge_soft_delete_on_destroy = true } }` so pause/resume can
+  reuse the names. CI writes secrets with `Key Vault Secrets Officer` on each vault; you hold
+  that role on the subscription (bootstrap) so local destroys can delete them. Whoever consumes
+  a shared service grants access in its own stack: env stacks assign `AcrPull` on the shared
+  registry and `Key Vault Secrets User` on their vault for the jump VM.
 - **Stacks share through Azure, not state.** From tf-14 the `env-dev` / `env-prod` stacks
   find the hub with data sources (by name), never with `terraform_remote_state`.
 - **Names** follow the table in the task texts (e.g. `rg-<prefix>-hub`, `vnet-<prefix>-hub`).
@@ -104,6 +124,28 @@ The lab is built to stay well under the Visual Studio credit (~500 kr/month):
 
 Phase 0 costs almost nothing: a state storage account (cents) plus free identities, role
 assignments and empty resource groups.
+
+Phase 3 at full size (tf-25), retail USD per hour in swedencentral:
+
+| What | USD/hour |
+|---|---|
+| 3 × `Standard_B2ats_v2` (jump, web-dev-1, web-dev-2) | 0.029 |
+| 3 × Standard HDD OS disk (30 GiB) | ~0.006 |
+| `pip-<prefix>-jump` (Standard, static) | 0.005 |
+| 2 × private endpoint (Key Vault, dev and prod) | 0.02 |
+| ACR Basic | 0.007 |
+| Container Apps (Consumption profile, scale to zero) | ~0 while idle |
+| Container Apps ingress public IP in `ME_cae-<prefix>-dev`, if billed | 0.005 |
+
+About 0.07 USD (~0.75 kr) an hour. The web VMs reach the internet (apt) through the spoke
+subnets' default outbound access, which costs nothing. Azure no longer turns it on by default
+for new VNets, but the azurerm provider creates subnets with
+`default_outbound_access_enabled = true`, which Azure still accepts. A NAT gateway, the
+production answer, would cost 0.045 USD an hour plus data, more than all three VMs together.
+
+Two things the pipeline can't do alone after `./lab.sh pause`: the new registry is empty, so
+`./lab.sh resume` applies `shared` first and imports the app image before the full run; and
+`apply-prod` waits for your approval.
 
 **The pause rule:** as soon as VMs exist (phase 3), run `./lab.sh pause` whenever you stop for
 the day, and `./lab.sh resume` when you come back. Pause destroys the expensive stacks
