@@ -60,6 +60,8 @@ ssh -i ~/.ssh/{{PREFIX}}_lab -J azureuser@<jump_public_ip> azureuser@<first web_
 works (add the same `-i` for the jump hop in `~/.ssh/config`, or use the `ProxyCommand` from
 the solution), and `./lab.sh grade` passes.
 
+Target: 25 minutes.
+
 ## Handover to the Ansible track
 
 From here the Ansible track takes over (the tracks can now be done in any order). What it
@@ -81,5 +83,3 @@ relies on, and what you must keep working from now on:
   Resume brings the VMs back empty; the Ansible track's playbooks configure them again.
 - `./lab.sh next ansible` checks that this state exists before the first Ansible task; without
   it, `./lab.sh catchup tf-25` builds it.
-
-Target: 25 minutes.
