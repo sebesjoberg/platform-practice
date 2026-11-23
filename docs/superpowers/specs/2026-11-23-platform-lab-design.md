@@ -213,7 +213,7 @@ against a real subscription.
 
 Terraform stacks (separate state each): `bootstrap`, `landing-zone`, `shared` (ACR, runner),
 `env-dev`, `env-prod`, later `observability`, `teams/*`. Pause destroys everything except
-`bootstrap` and `landing-zone`.
+`bootstrap`, `landing-zone` and `observability` (Log Analytics, as in the cost model).
 
 ### Terraform track (draft curriculum)
 
