@@ -13,9 +13,52 @@ tf_stack() {
   terraform -chdir="$dir" "$@" </dev/null || die 1 "terraform $1 failed for $stack"
 }
 
+# Placeholder SSH key for destroys without ~/.ssh/<prefix>_lab.pub: a real ed25519 public key
+# (the provider parses it) whose private half was deleted. Nothing ever logs in with it.
+LAB_PLACEHOLDER_SSH_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGbG5bSUW5X3XwP7w2zy2uRxzooFWF1cNkhrNJ3menoy lab-destroy-placeholder"
+
+# Description of the platform owner's Key Vault Secrets Officer assignment (tf-21, bootstrap's
+# platform-owner.tf); nuke deletes the assignment by it.
+LAB_OWNER_KV_DESCRIPTION="Platform owner: break-glass access to Key Vault secrets (tf-21)."
+
+# lab_destroy_vars: values for the stack variables without defaults, which CI sets from repo
+# variables (TF_VAR_*). A local destroy needs every variable but never sends these anywhere:
+# landing-zone's budget_email (tf-12), shared's learner_ip and shared/env-dev's ssh_public_key
+# (tf-25). Values already in the environment win.
+lab_destroy_vars() {
+  export TF_VAR_budget_email="${TF_VAR_budget_email:-nuke@example.invalid}"
+  export TF_VAR_learner_ip="${TF_VAR_learner_ip:-${LEARNER_IP:-192.0.2.1}}"
+  if [[ -z "${TF_VAR_ssh_public_key:-}" ]]; then
+    if [[ -f "$HOME/.ssh/${PREFIX}_lab.pub" ]]; then
+      TF_VAR_ssh_public_key="$(cat "$HOME/.ssh/${PREFIX}_lab.pub")"
+    else
+      TF_VAR_ssh_public_key="$LAB_PLACEHOLDER_SSH_KEY"
+    fi
+    export TF_VAR_ssh_public_key
+  fi
+}
+
+# resume_import_image: from tf-23 env-dev runs hello:1.0 from the shared registry, which pause
+# destroyed. Terraform doesn't push images: apply shared first, import the image once the
+# registry exists (tracks/terraform/lib/acr-image.sh, as tf-22 does), and only then dispatch the
+# full run, which queues behind the shared one.
+resume_import_image() {
+  local lib="$TRACKS_DIR/terraform/lib/acr-image.sh"
+  [[ -f "$lib" && -d "$LIVE_DIR/terraform/shared" ]] || return 0
+  # shellcheck source=/dev/null
+  source "$lib"
+  acr_hello_needed "$LIVE_DIR" || return 0
+  need az
+  echo "resume: applying shared first, to import the app image into the new registry"
+  gh workflow run terraform.yml --ref main -f stacks=shared </dev/null || die 1 "could not dispatch terraform.yml"
+  acr_wait_ready "${RESUME_ACR_WAIT:-1200}" </dev/null || die 1 "the registry did not come back; see gh run list --workflow terraform.yml"
+  acr_hello_import </dev/null || die 1 "could not import the app image into $(acr_name)"
+}
+
 cmd_pause() {
   load_config
   need terraform
+  lab_destroy_vars
   local stack
   for stack in "${PAUSE_ORDER[@]}"; do
     [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
@@ -37,7 +80,11 @@ cmd_resume() {
   local i stack
   if [[ -f "$LIVE_DIR/.github/workflows/terraform.yml" ]]; then
     need gh
+    resume_import_image
     gh workflow run terraform.yml --ref main -f stacks=all </dev/null || die 1 "could not dispatch terraform.yml"
+    if [[ -f "$LIVE_DIR/terraform/env-prod/main.tf" ]] && grep -qs 'environment:[[:space:]]*prod' "$LIVE_DIR/.github/workflows/terraform.yml"; then
+      echo "resume: approve the run's apply-prod job (Actions tab, Review deployments) to rebuild prod"
+    fi
   else
     need terraform
     for ((i = ${#PAUSE_ORDER[@]} - 1; i >= 0; i--)); do
@@ -77,9 +124,10 @@ cmd_nuke() {
   [[ "$active" == "${SUBSCRIPTION_ID:-}" ]] ||
     die 4 "az is on subscription ${active:-<none>}, lab is $SUBSCRIPTION_ID — az account set -s $SUBSCRIPTION_ID"
 
-  # landing-zone requires var.budget_email from tf-12 on (CI sets it from the BUDGET_EMAIL repo
-  # variable). Destroy never sends it anywhere, so any valid address will do.
-  export TF_VAR_budget_email="${TF_VAR_budget_email:-nuke@example.invalid}"
+  # landing-zone requires var.budget_email from tf-12 on, shared and env-dev learner_ip and
+  # ssh_public_key from tf-25 (CI sets them from repo variables). Destroy never sends them
+  # anywhere, so any valid value will do.
+  lab_destroy_vars
   for stack in "${NUKE_ORDER[@]}"; do
     [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
     echo "nuke: destroying $stack"
@@ -88,6 +136,15 @@ cmd_nuke() {
 
   if pid="$(az identity show -g "$rg" -n "id-$PREFIX-github-ci" --query principalId -o tsv </dev/null 2>/dev/null | tr -d '\r')" && [[ -n "$pid" ]]; then
     az role assignment delete --assignee "$pid" --yes </dev/null || die 1 "could not delete role assignments of $pid"
+  fi
+  # tf-21's bootstrap gave you Key Vault Secrets Officer on the subscription. It goes with the lab;
+  # matched by its description, so a role you held before the lab stays.
+  local kv_ids
+  kv_ids="$(az role assignment list --scope "/subscriptions/$SUBSCRIPTION_ID" --role "Key Vault Secrets Officer" \
+    --query "[?description=='$LAB_OWNER_KV_DESCRIPTION'].id" -o tsv </dev/null 2>/dev/null | tr -d '\r')" || kv_ids=""
+  if [[ -n "$kv_ids" ]]; then
+    # shellcheck disable=SC2086 # one ID per word
+    az role assignment delete --ids $kv_ids --yes </dev/null || die 1 "could not delete your Key Vault Secrets Officer assignment"
   fi
   az group delete -n "$rg" --yes </dev/null || die 1 "could not delete $rg"
 

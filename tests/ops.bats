@@ -132,6 +132,7 @@ terraform -chdir=$LIVE/terraform/landing-zone init -input=false
 terraform -chdir=$LIVE/terraform/landing-zone destroy -auto-approve -input=false
 az identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv
 az role assignment delete --assignee pid-123 --yes
+az role assignment list --scope /subscriptions/00000000-0000-0000-0000-000000000000 --role Key Vault Secrets Officer --query [?description=='Platform owner: break-glass access to Key Vault secrets (tf-21).'].id -o tsv
 az group delete -n rg-acme-tfstate --yes
 gh repo delete learner/acme-platform --yes"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
@@ -147,7 +148,7 @@ gh repo delete learner/acme-platform --yes"
   fake_response az "group delete -n rg-acme-tfstate --yes" 0
   run "$LAB" nuke <<<$'acme\nnuke\nn\nn'
   [ "$status" -eq 0 ]
-  [[ "$(cat "$FAKE_LOG")" != *"role assignment"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *"role assignment delete --assignee"* ]]
 }
 
 @test "nuke stops before group delete when a destroy fails" {
@@ -244,4 +245,62 @@ n
   [[ "$(cat "$FAKE_LOG")" == *"gh repo delete learner/acme-platform --yes"* ]]
   [[ "$(cat "$FAKE_LOG")" != *"acme-terraform-modules --yes"* ]]
   [[ "$(cat "$FAKE_LOG")" == *"destroy -auto-approve -input=false"* ]]
+}
+
+@test "pause hands destroys values for the variables CI sets from repo variables" {
+  export HOME="$TEST_TMP/home"
+  mkdir -p "$TEST_TMP/bin" "$HOME"
+  cat >"$TEST_TMP/bin/terraform" <<'SH'
+#!/usr/bin/env bash
+echo "terraform $* ip=$TF_VAR_learner_ip key=${TF_VAR_ssh_public_key%% *} mail=$TF_VAR_budget_email" >>"$FAKE_LOG"
+SH
+  chmod +x "$TEST_TMP/bin/terraform"
+  export PATH="$TEST_TMP/bin:$PATH"
+  mkstacks shared
+  run "$LAB" pause
+  [ "$status" -eq 0 ]
+  grep -q "destroy -auto-approve -input=false ip=203.0.113.10 key=ssh-ed25519 mail=nuke@example.invalid" "$FAKE_LOG"
+  # the learner's own public key wins over the placeholder
+  mkdir -p "$HOME/.ssh"
+  echo "ssh-rsa AAAAB3Nza learner" >"$HOME/.ssh/acme_lab.pub"
+  : >"$FAKE_LOG"
+  run "$LAB" pause
+  [ "$status" -eq 0 ]
+  grep -q "destroy -auto-approve -input=false ip=203.0.113.10 key=ssh-rsa" "$FAKE_LOG"
+}
+
+@test "resume imports the app image into the new registry before the full run" {
+  mkdir -p "$LIVE/.github/workflows" "$LIVE/terraform/shared" "$LIVE/terraform/env-dev"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  printf '      image = "${data.azurerm_container_registry.shared.login_server}/hello:1.0"\n' >"$LIVE/terraform/env-dev/container-app.tf"
+  : >"$LAB_HOME/paused"
+  fake_response gh "workflow run terraform.yml --ref main -f stacks=shared" 0
+  fake_response az "acr show -n acracmeabc123 --query provisioningState -o tsv" 0 Succeeded
+  fake_response az "acr repository show -n acracmeabc123 --image hello:1.0 -o none" 1
+  fake_response az "acr import --name acracmeabc123 --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0 -o none" 0
+  fake_response gh "workflow run terraform.yml --ref main -f stacks=all" 0
+  run "$LAB" resume
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB_HOME/paused" ]
+  expected="gh workflow run terraform.yml --ref main -f stacks=shared
+az acr show -n acracmeabc123 --query provisioningState -o tsv
+az acr repository show -n acracmeabc123 --image hello:1.0 -o none
+az acr import --name acracmeabc123 --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0 -o none
+gh workflow run terraform.yml --ref main -f stacks=all"
+  [ "$(cat "$FAKE_LOG")" = "$expected" ]
+}
+
+@test "resume stays paused when the app image can't be imported" {
+  mkdir -p "$LIVE/.github/workflows" "$LIVE/terraform/shared" "$LIVE/terraform/env-dev"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  printf '      image = "x.azurecr.io/hello:1.0"\n' >"$LIVE/terraform/env-dev/container-app.tf"
+  : >"$LAB_HOME/paused"
+  fake_response gh "workflow run terraform.yml --ref main -f stacks=shared" 0
+  fake_response az "acr show -n acracmeabc123 --query provisioningState -o tsv" 0 Succeeded
+  fake_response az "acr repository show -n acracmeabc123 --image hello:1.0 -o none" 1
+  fake_response az "acr import --name acracmeabc123 --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0 -o none" 1
+  run "$LAB" resume
+  [ "$status" -ne 0 ]
+  [ -f "$LAB_HOME/paused" ]
+  [[ "$(cat "$FAKE_LOG")" != *"stacks=all"* ]]
 }
