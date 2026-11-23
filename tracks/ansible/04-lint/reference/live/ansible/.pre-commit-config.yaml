@@ -1,0 +1,27 @@
+---
+# pre-commit for the Ansible code. It lives in ansible/ with the rest of the Ansible track, so
+# install the git hook from the repo root with:
+#   pre-commit install --config ansible/.pre-commit-config.yaml
+# and run every hook by hand with:
+#   pre-commit run --config ansible/.pre-commit-config.yaml --all-files
+# Hooks run from the repo root. Revs are release tags, never branches: a new linter version
+# arrives as a reviewed change (pre-commit autoupdate), not overnight.
+repos:
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        files: ^ansible/
+        args: [--strict, -c, ansible/.yamllint]
+
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v26.11.0
+    hooks:
+      - id: ansible-lint
+        files: ^ansible/
+        # The hook asks for python3.14 by default; WSL Ubuntu 24.04 has 3.12. Same ansible-core
+        # as ansible/requirements.txt, so the hook and your venv agree.
+        language_version: python3.12
+        additional_dependencies:
+          - ansible-core==2.21.6
+        entry: python3 -m ansiblelint --project-dir ansible -c ansible/.ansible-lint
