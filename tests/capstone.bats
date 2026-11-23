@@ -154,18 +154,53 @@ load_checks() {
 
 @test "checks: the regression check never recurses inside grade --all" {
   load_checks
-  mkdir -p "$TEST_TMP/lab"
-  printf '#!/usr/bin/env bash
-echo "lab.sh $*" >>"$FAKE_LOG"
-exit 1
-' >"$TEST_TMP/lab/lab.sh"
-  chmod +x "$TEST_TMP/lab/lab.sh"
-  LAB_ROOT="$TEST_TMP/lab" LAB_GRADE_ALL=1 run cap01_no_regressions
+  fake_lab 1
+  printf 'P\n' >"$TEST_TMP/results"
+  GRADE_RESULTS="$TEST_TMP/results" LAB_ROOT="$TEST_TMP/lab" LAB_GRADE_ALL=1 run cap01_no_regressions
   [ "$status" -eq 0 ]
   [[ "$(cat "$FAKE_LOG")" != *lab.sh* ]]
-  LAB_ROOT="$TEST_TMP/lab" LAB_GRADE_ALL="" run cap01_no_regressions
+}
+
+# fake_lab <rc>: a lab.sh that logs its arguments, prints a regressions line and exits <rc>.
+fake_lab() {
+  mkdir -p "$TEST_TMP/lab"
+  cat >"$TEST_TMP/lab/lab.sh" <<SH
+#!/usr/bin/env bash
+echo "lab.sh \$*" >>"\$FAKE_LOG"
+echo "regressions: an-10"
+exit $1
+SH
+  chmod +x "$TEST_TMP/lab/lab.sh"
+}
+
+@test "checks: grade --all runs only after every other cap-01 check passed, its output kept in a log" {
+  load_checks
+  fake_lab 1
+  export LAB_ROOT="$TEST_TMP/lab" LAB_GRADE_ALL="" GRADE_RESULTS="$TEST_TMP/results"
+  printf 'P\nF\nP\n' >"$GRADE_RESULTS"
+  run cap01_no_regressions
+  [ "$status" -eq 1 ]
+  [[ "$(cat "$FAKE_LOG")" != *lab.sh* ]]
+  : >"$GRADE_RESULTS"
+  run cap01_no_regressions
+  [ "$status" -eq 1 ]
+  [[ "$(cat "$FAKE_LOG")" != *lab.sh* ]]
+  printf 'P\nP\n' >"$GRADE_RESULTS"
+  run cap01_no_regressions
   [ "$status" -eq 1 ]
   grep -qx "lab.sh grade --all --exclude cap-01" "$FAKE_LOG"
+  [ "$(cat "$LAB_HOME/logs/cap-01-grade-all.log")" = "regressions: an-10" ]
+  fake_lab 0
+  run cap01_no_regressions
+  [ "$status" -eq 0 ]
+}
+
+@test "checks: the regression reason names the log; the SSH checks get 180 s" {
+  run grep -c 'cap01_grade_all_log) names them' "$CAP/checks.sh"
+  [ "$output" -eq 1 ]
+  t="$(grep -n '^GRADE_TIMEOUT=180' "$CAP/checks.sh" | cut -d: -f1)"
+  c="$(grep -n "^check \"repo variable RUNNER_SSH_PUBLIC_KEY" "$CAP/checks.sh" | cut -d: -f1)"
+  [ -n "$t" ] && [ -n "$c" ] && [ "$t" -lt "$c" ]
 }
 
 @test "docs: superseded handover bullets, stale live-verify lines and the old approval note are gone" {

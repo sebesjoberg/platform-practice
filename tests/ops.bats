@@ -529,3 +529,56 @@ y'
   grep -qx "az group delete -n rg-acme-payments --yes" "$FAKE_LOG"
   [ ! -d "$LIVE/terraform/teams" ]
 }
+
+# rr_env: tracks/ansible/lib/runner-register.sh against stand-ins. gh: two ansible.yml runs wait
+# for a runner (41 triggered by Terraform, 42 a push); ansible-playbook and ansible only log (the
+# ad-hoc command prints the runner's public key).
+rr_env() {
+  export PREFIX=acme SUFFIX=abc123 GH_OWNER=learner LIVE_REPO=acme-platform LIVE_DIR="$LIVE" RUNNER_REGISTER_POLL_SECONDS=0
+  live_ansible ansible/runner.yml ansible/site.yml .github/workflows/ansible.yml
+  echo '        TF_VAR_runner_ssh_public_key: ${{ vars.RUNNER_SSH_PUBLIC_KEY }}' >"$LIVE/.github/workflows/terraform.yml"
+  mkdir -p "$TEST_TMP/bin"
+  cat >"$TEST_TMP/bin/gh" <<'SH'
+#!/usr/bin/env bash
+echo "gh $*" >>"$FAKE_LOG"
+case "$*" in
+  "api -X POST repos/learner/acme-platform/actions/runners/registration-token --jq "*) echo '{"gh_runner_token":"t"}' ;;
+  "run list -R learner/acme-platform --workflow ansible.yml --limit 50 --json databaseId,status,event --jq "*)
+    printf '41 workflow_run\n42 push\n' ;;
+  "run cancel "*) ;;
+  "run view "*" --json status --jq .status") echo completed ;;
+  "run rerun "*) [[ -n "${RERUN_RC:-}" ]] && exit "$RERUN_RC"; true ;;
+  "variable set RUNNER_SSH_PUBLIC_KEY -R learner/acme-platform --body ssh-ed25519 NEWKEY gh-runner@jump") ;;
+  *) echo "unexpected: gh $*" >&2; exit 1 ;;
+esac
+SH
+  printf '#!/usr/bin/env bash\necho "ansible-playbook $*" >>"$FAKE_LOG"\n' >"$TEST_TMP/bin/ansible-playbook"
+  printf '#!/usr/bin/env bash\necho "ansible $*" >>"$FAKE_LOG"\necho "vm-acme-jump | CHANGED | rc=0 >>"\necho "ssh-ed25519 NEWKEY gh-runner@jump"\n' >"$TEST_TMP/bin/ansible"
+  chmod +x "$TEST_TMP/bin/"*
+  export PATH="$TEST_TMP/bin:$PATH"
+}
+
+@test "runner-register holds queued ansible.yml runs until site.yml is done, then re-runs the triggered ones" {
+  rr_env
+  run "$REPO_ROOT/tracks/ansible/lib/runner-register.sh"
+  [ "$status" -eq 0 ]
+  log="$(grep -vE '^(gh api|gh run view|ansible -|ansible role_jump)' "$FAKE_LOG")"
+  expected="gh run list -R learner/acme-platform --workflow ansible.yml --limit 50 --json databaseId,status,event --jq .[] | select(.status != \"completed\") | \"\(.databaseId) \(.event)\"
+gh run cancel 41 -R learner/acme-platform
+gh run cancel 42 -R learner/acme-platform
+ansible-playbook runner.yml -e @${TMPDIR:-/tmp}/"
+  [[ "$log" == "$expected"* ]]
+  [ "$(grep -vE '^(gh api|gh run view|ansible role_jump)' "$FAKE_LOG" | tail -n 3)" = "gh variable set RUNNER_SSH_PUBLIC_KEY -R learner/acme-platform --body ssh-ed25519 NEWKEY gh-runner@jump
+ansible-playbook site.yml
+gh run rerun 41 -R learner/acme-platform" ]
+  [[ "$(cat "$FAKE_LOG")" != *"rerun 42"* ]]
+  [ ! -e "$LAB_HOME/runner-register.held" ]
+}
+
+@test "runner-register keeps the triggered runs it couldn't re-run for its next run" {
+  rr_env
+  RERUN_RC=1 run "$REPO_ROOT/tracks/ansible/lib/runner-register.sh"
+  [ "$status" -eq 1 ]
+  [ "$(cat "$LAB_HOME/runner-register.held")" = "41" ]
+  [[ "$output" == *"could not re-run ansible.yml run(s) 41"* ]]
+}

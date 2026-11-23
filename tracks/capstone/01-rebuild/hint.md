@@ -34,7 +34,10 @@ Traps:
   gathering would hit the wall first.
 - **New VM, new host key.** That's why `ansible.cfg` doesn't record host keys. Old
   ControlPersist connections to the deleted VM die with it.
-- **After a pause/resume the jump host is new, and so is the runner's key.**
-  `tracks/ansible/lib/runner-register.sh` (which `./lab.sh resume` runs) updates
-  `RUNNER_SSH_PUBLIC_KEY`; the VMs resume built still have the old key, which is fine: by then
-  `site.yml` has authorized the new one for `ops`.
+- **After a pause/resume the jump host is new, and so is the runner's key.** Resume's Terraform
+  run triggers your `ansible.yml` too, while no runner exists, and every VM is new: the old key
+  variable built them, and no `ops` exists anywhere. That run can't succeed until the runner is
+  back and `site.yml` has run. `tracks/ansible/lib/runner-register.sh` (which `./lab.sh resume`
+  runs) cancels such waiting runs before it registers the runner, updates
+  `RUNNER_SSH_PUBLIC_KEY`, runs `site.yml` (now `ops` has the new runner's key everywhere), and
+  then re-runs the triggered ones, which log in as `ops`.

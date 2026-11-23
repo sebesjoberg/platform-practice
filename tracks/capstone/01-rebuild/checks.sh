@@ -144,15 +144,27 @@ cap01_triggered_run() {
   an_wf_run_jobs "$CAP01_REPO" "$(jq -r .id <<<"$run")" | jq -se 'any(.[]; .name == "apply" and .conclusion == "success")' >/dev/null
 }
 
+# cap01_grade_all_log: where cap01_no_regressions keeps the output of its grade --all.
+cap01_grade_all_log() { printf '%s/logs/cap-01-grade-all.log\n' "${LAB_HOME:?}"; }
+
 # cap01_no_regressions: ./lab.sh grade --all across every track, cap-01 itself excluded so it can't
 # recurse. Inside a grade --all (LAB_GRADE_ALL=1) the enclosing run already grades everything.
+# It takes an hour or two, so only once every other cap-01 check has passed (the results so far
+# are in $GRADE_RESULTS, one P or F per check). Its output goes to cap01_grade_all_log: the
+# grader shows none of a check's output, and the log's last lines name the regressions.
 cap01_no_regressions() {
+  local log
   [[ "${LAB_GRADE_ALL:-}" == 1 ]] && return 0
-  "${LAB_ROOT:?}/lab.sh" grade --all --exclude cap-01
+  if [[ ! -s "${GRADE_RESULTS:-}" ]] || grep -qx F "$GRADE_RESULTS"; then
+    return 1
+  fi
+  log="$(cap01_grade_all_log)"
+  mkdir -p "$(dirname "$log")"
+  "${LAB_ROOT:?}/lab.sh" grade --all --exclude cap-01 >"$log" 2>&1
 }
 export -f cap01_on_block cap01_wf_names cap01_trigger cap01_apply_guard cap01_tf_runner_key cap01_module_release \
   cap01_first_contact cap01_vm_new cap01_var_is_runner_key cap01_vm_runner_login cap01_triggered_run \
-  cap01_no_regressions cap01_rg cap01_vm cap01_snap cap01_snap_get cap01_vm_keys cap01_key_body \
+  cap01_no_regressions cap01_grade_all_log cap01_rg cap01_vm cap01_snap cap01_snap_get cap01_vm_keys cap01_key_body \
   cap01_runner_pubkey cap01_repo_var
 
 check_code "ansible.yml starts when the Terraform pipeline finishes on main (workflow_run or repository_dispatch)" \
@@ -179,6 +191,9 @@ check "vm-$PREFIX-web-dev-2 is back: running, and a new VM (not the one the inci
   'cap01_vm_new' \
   "vm-$PREFIX-web-dev-2 must exist in rg-$PREFIX-dev and run, rebuilt by the Terraform pipeline (merge your change, or gh workflow run terraform.yml -f stacks=env-dev)"
 
+# From here on the checks load the inventory or SSH through the jump host: 180 s, as an-* do.
+cap01_timeout="${GRADE_TIMEOUT:-}"
+GRADE_TIMEOUT=180
 check "repo variable RUNNER_SSH_PUBLIC_KEY holds gh-runner's public key from the jump host" \
   'cap01_var_is_runner_key' \
   "set it from the jump host: ssh to vm-$PREFIX-jump, sudo cat /home/gh-runner/.ssh/id_ed25519.pub, then gh variable set RUNNER_SSH_PUBLIC_KEY -R $CAP01_REPO (the public half only)"
@@ -191,15 +206,14 @@ check "the newest ansible.yml run started by the Terraform pipeline (workflow_ru
   'cap01_triggered_run' \
   "the Terraform run that rebuilt vm-$PREFIX-web-dev-2 must trigger ansible.yml by itself, and its apply job must succeed on the new VM (no gh workflow run ansible.yml, no ansible-playbook from your machine)"
 
-cap01_timeout="${GRADE_TIMEOUT:-}"
-GRADE_TIMEOUT=180
 check "HAProxy on the jump host sends requests to both vm-$PREFIX-web-dev-1 and vm-$PREFIX-web-dev-2" \
   'an_probe role_jump 1 haproxy.sh "vm-$PREFIX-web-dev-1" "vm-$PREFIX-web-dev-2"' \
   "on the jump host, for i in \$(seq 10); do curl -s localhost; done must show both web VMs (the triggered run configures the new VM and HAProxy)"
 
-# Last and slow: every finished task of every track again (molecule included).
+# Last and slow: every finished task of every track again (Molecule included), and only once the
+# checks above all pass.
 GRADE_TIMEOUT=10800
-check "./lab.sh grade --all: no regressions in any track" \
+check "./lab.sh grade --all: no regressions in any track (runs only when every check above passes)" \
   'cap01_no_regressions' \
-  "./lab.sh grade --all reports regressions: run it and fix the tasks it names"
+  "not run while a check above fails (fix those first); if they all passed, ./lab.sh grade --all found regressions: the end of $(cap01_grade_all_log) names them"
 GRADE_TIMEOUT="$cap01_timeout"

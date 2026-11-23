@@ -34,11 +34,12 @@ took too long), the lab stays paused: fix it and run `./lab.sh resume` again, or
 
 **From an-15 on** the jump host is also your self-hosted GitHub runner, and a resumed jump host is
 a new machine: GitHub shows the old runner offline. So instead of `site.yml`, resume runs
-`tracks/ansible/lib/runner-register.sh`: it registers the new jump host with a fresh token
-(`runner.yml`), puts back the Key Vault objects, and runs `site.yml`, which authorizes the
-runner's new SSH key on every VM. From an-16 on resume then dispatches the Ansible pipeline
-(`-f env=dev`). If it fails, run the script yourself from the lab directory; queued pipeline runs
-start once the runner is back.
+`tracks/ansible/lib/runner-register.sh`: it cancels pipeline runs waiting for a runner (they
+would start on the new runner before the fleet knows its key), registers the new jump host with a
+fresh token (`runner.yml`), puts back the Key Vault objects, runs `site.yml`, which authorizes the
+runner's new SSH key on every VM, and re-runs the cancelled runs the Terraform pipeline had
+triggered (cap-01). From an-16 on resume then dispatches the Ansible pipeline (`-f env=dev`). If
+it fails, run the script yourself from the lab directory.
 
 ## Conventions
 
