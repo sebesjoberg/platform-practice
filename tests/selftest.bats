@@ -326,3 +326,73 @@ run "plain" {
   [ "$status" -ne 0 ]
   [[ "$output" == *"has no mock_provider"* ]]
 }
+
+# --- validate-reference: modules repo sources (tf-19/tf-20) --------------------------------
+
+# vr_module_fixture: vr-01 with a provider-free module at reference/modules/mod.
+vr_module_fixture() {
+  vr_setup
+  VR_REF="$TRACKS_DIR/vr/01-x/reference"
+  mkdir -p "$VR_REF/modules/mod"
+  printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nresource "terraform_data" "m" {\n  input = "x"\n}\n\noutput "id" {\n  value = terraform_data.m.id\n}\n' \
+    >"$VR_REF/modules/mod/main.tf"
+}
+
+# vr_stack <name> <module path> <ref>: a stack calling the modules repo source.
+vr_stack() {
+  mkdir -p "$VR_REF/live/terraform/$1"
+  printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nmodule "m" {\n  source = "git::https://github.com/{{GH_OWNER}}/{{MODULES_REPO}}.git//%s?ref=%s"\n}\n' "$2" "$3" \
+    >"$VR_REF/live/terraform/$1/main.tf"
+}
+
+@test "validate-reference rewrites modules repo sources to the local reference module" {
+  vr_module_fixture
+  command -v tflint >/dev/null || skip "tflint not on PATH"
+  command -v trivy >/dev/null || skip "trivy not on PATH"
+  rm -rf "$VR_REF/live/terraform/stack"
+  vr_stack stack mod v1.0.0
+  run "$VALIDATE" vr-01 --no-molecule
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"module source live/terraform/stack/main.tf: mod?ref=v1.0.0 -> ../../../modules/mod"* ]]
+  [[ "$output" == *"ok    init live/terraform/stack"* ]]
+  [[ "$output" == *"ok    validate live/terraform/stack"* ]]
+  [[ "$output" == *"ok    validate modules/mod"* ]]
+}
+
+@test "validate-reference skips a stack pinned to an older major version" {
+  vr_module_fixture
+  command -v tflint >/dev/null || skip "tflint not on PATH"
+  command -v trivy >/dev/null || skip "trivy not on PATH"
+  rm -rf "$VR_REF/live/terraform/stack"
+  vr_stack dev mod v2.0.0
+  vr_stack prod mod v1.0.0
+  run "$VALIDATE" vr-01 --no-molecule
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok    validate live/terraform/dev"* ]]
+  [[ "$output" == *"skip  live/terraform/prod (pins mod?ref=v1.0.0, older than the v2 module"* ]]
+  [[ "$output" != *"init live/terraform/prod"* ]]
+}
+
+@test "validate-reference fails when a pinned module is not in the reference" {
+  vr_module_fixture
+  rm -rf "$VR_REF/live/terraform/stack"
+  vr_stack stack nope v1.0.0
+  run "$VALIDATE" vr-01 --no-molecule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has no reference module at modules/nope"* ]]
+}
+
+@test "lint treats a track's lib/ as shared helpers: shellcheck, not task files" {
+  lint_copy
+  mkdir -p "$TEST_TMP/tracks/demo/lib"
+  printf '# shellcheck shell=bash\nhelper() { echo "$1"; }\n' >"$TEST_TMP/tracks/demo/lib/helper.sh"
+  run "$LINT" demo
+  [ "$status" -eq 0 ]
+  printf 'bad() { rm $1; }\n' >>"$TEST_TMP/tracks/demo/lib/helper.sh"
+  run "$LINT" demo
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lib: shellcheck: helper.sh"* ]]
+  [[ "$output" != *"missing task.md"* ]]
+}

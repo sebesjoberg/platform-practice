@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Validate the reference state of a task without Azure:
 #   tests/validate-reference.sh <id> [--no-molecule]
-# Honours TRACKS_DIR (default <repo>/tracks). Renders with the fixture config, then runs, for
-# every terraform dir (stacks and modules): fmt, init -backend=false, validate, tflint, trivy,
-# terraform test; and for ansible/: yamllint, ansible-lint, syntax-check, molecule.
+# Honours TRACKS_DIR (default <repo>/tracks). Renders with the fixture config, rewrites module
+# sources that point at the modules repo to the local reference (rewrite_module_sources), then
+# runs, for every terraform dir (stacks and modules): fmt, init -backend=false, validate,
+# tflint, trivy, terraform test; and for ansible/: yamllint, ansible-lint, syntax-check, molecule.
 # Prints a per-step summary; exits non-zero on the first failing step (after its output).
 set -euo pipefail
 
@@ -64,6 +65,50 @@ step() {
 
 rel() { echo "${1#"$OUT"/}"; }
 
+# ---- module sources from the modules repo ----------------------------------------------
+# From tf-19 the stacks pull modules from the learner's modules repo by tag:
+#   source = "git::https://github.com/<GH_OWNER>/<MODULES_REPO>.git//<path>?ref=<tag>"
+# Validation stays offline: each such source is rewritten to the reference's own
+# <out>/modules/<path> (relative path), which holds the newest version of that module.
+# A stack pinning an older *major* version than the newest one this reference pins for the same
+# path (tf-20: env-prod on v1 while env-dev moved to v2) can't be validated against that tree,
+# so it is skipped here. Its version is validated by the reference of the task that released it:
+# run this script for tf-19 as well as tf-20 (the phase gate does both).
+declare -A SKIP_DIRS=()
+rewrite_module_sources() {
+  local re f src path ref major dir target relp text
+  local -A newest=()
+  re="git::https://github\\.com/${GH_OWNER}/${MODULES_REPO}\\.git//[^?\"]+\\?ref=[^\"]+"
+  local -a hits=()
+  [[ -d "$OUT/live" ]] || return 0
+  mapfile -t hits < <(grep -rHoE --include='*.tf' "\"$re\"" "$OUT/live" "$OUT/modules" 2>/dev/null | sort -u || true)
+  [[ ${#hits[@]} -gt 0 ]] || return 0
+  # newest major version pinned per module path
+  for f in "${hits[@]}"; do
+    src="${f#*:}" src="${src//\"/}"
+    path="${src#*.git//}" path="${path%%\?ref=*}" ref="${src##*\?ref=}"
+    [[ "$ref" =~ ^v?([0-9]+)\. ]] || continue
+    major=${BASH_REMATCH[1]}
+    if [[ -z "${newest[$path]:-}" || $major -gt ${newest[$path]} ]]; then newest[$path]=$major; fi
+  done
+  for f in "${hits[@]}"; do
+    src="${f#*:}" src="${src//\"/}" f="${f%%:*}" dir="$(dirname "$f")"
+    path="${src#*.git//}" path="${path%%\?ref=*}" ref="${src##*\?ref=}"
+    if [[ "$ref" =~ ^v?([0-9]+)\. && ${BASH_REMATCH[1]} -lt ${newest[$path]:-0} ]]; then
+      SKIP_DIRS[$dir]="pins $path?ref=$ref, older than the v${newest[$path]} module in this reference"
+      continue
+    fi
+    target="$OUT/modules/$path"
+    [[ -d "$target" ]] || die 1 "$(rel "$f"): $src has no reference module at modules/$path"
+    relp="$(realpath --relative-to="$dir" "$target")"
+    [[ "$relp" == .* ]] || relp="./$relp"
+    text="$(cat "$f")"
+    printf '%s\n' "${text//"\"$src\""/"\"$relp\""}" >"$f"
+    echo "module source $(rel "$f"): $path?ref=$ref -> $relp"
+  done
+}
+rewrite_module_sources
+
 # ---- terraform -----------------------------------------------------------------------
 tf_dirs=()
 for root in "$OUT/live/terraform" "$OUT/modules"; do
@@ -84,6 +129,10 @@ if [[ ${#tf_dirs[@]} -gt 0 ]]; then
   step "tflint --init" "$REPO/tests" tflint --init --config "$REPO/tests/tflint.hcl"
   for d in "${tf_dirs[@]}"; do
     r="$(rel "$d")"
+    if [[ -n "${SKIP_DIRS[$d]:-}" ]]; then
+      echo "skip  $r (${SKIP_DIRS[$d]}; validated with the task that released it)"
+      continue
+    fi
     step "init $r" "$d" terraform init -backend=false -input=false
     step "validate $r" "$d" terraform validate
     step "tflint $r" "$d" tflint --config "$REPO/tests/tflint.hcl"
