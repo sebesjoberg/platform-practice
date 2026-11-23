@@ -1,0 +1,54 @@
+name: ci
+
+# Module CI for the modules repo (tf-19): format, validate and test every module, then lint and
+# scan. No Azure login: the tests use mock providers.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: "1.17.2"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+      - name: validate and test every module
+        run: |
+          for d in $(find . -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u); do
+            echo "::group::$d"
+            terraform -chdir="$d" init -backend=false -input=false
+            terraform -chdir="$d" validate
+            if compgen -G "$d/tests/*.tftest.hcl" >/dev/null; then terraform -chdir="$d" test; fi
+            echo "::endgroup::"
+          done
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.66.0
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # tflint --init downloads the azurerm ruleset from GitHub
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl"
+      - name: trivy config scan
+        env:
+          TRIVY_VERSION: "0.76.2"
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/aquasecurity/trivy/v${TRIVY_VERSION}/contrib/install.sh" |
+            sh -s -- -b "$RUNNER_TEMP/bin" "v${TRIVY_VERSION}"
+          "$RUNNER_TEMP/bin/trivy" config --exit-code 1 --severity HIGH,CRITICAL .

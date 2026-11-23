@@ -1,0 +1,2 @@
+# The spoke module moved to the modules repo ({{MODULES_REPO}}/spoke, consumed by tag).
+live/terraform/modules

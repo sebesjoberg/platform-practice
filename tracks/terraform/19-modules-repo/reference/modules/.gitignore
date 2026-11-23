@@ -1,0 +1,7 @@
+# Modules never commit state or provider lock files: the stack that calls a module locks the
+# providers (from tf-30), and a lock file here would only apply to running the tests.
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+*.tfvars
