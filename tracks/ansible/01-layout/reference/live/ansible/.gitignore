@@ -1,0 +1,9 @@
+# Local Python environment, rebuilt from requirements.txt
+.venv/
+
+# Installed collections, rebuilt from collections/requirements.yml
+collections/ansible_collections/
+
+# ansible-lint / ansible-compat cache, retry files
+.ansible/
+*.retry
