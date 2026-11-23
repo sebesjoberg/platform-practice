@@ -36,6 +36,17 @@ grade_task() {
   [[ "$GRADE_PASSED" -eq "$GRADE_TOTAL" ]]
 }
 
+# grade_quiet <id>: run the task's checks with output suppressed; 0 only when all pass.
+# No progress side effects, no timing. Never exits the caller.
+grade_quiet() {
+  local id=$1
+  (
+    GRADE_TMP="$(mktemp -d)"
+    trap 'rm -rf "$GRADE_TMP"' EXIT
+    grade_task "$id" normal
+  ) >/dev/null 2>&1
+}
+
 # grade_order: finished task ids in track order (terraform, ansible, capstone, others alphabetically).
 grade_order() {
   local track id

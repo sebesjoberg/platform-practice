@@ -20,6 +20,10 @@ source "$LAB_ROOT/lib/config.sh"
 source "$LAB_ROOT/lib/tasks.sh"
 # shellcheck source=lib/grade.sh
 source "$LAB_ROOT/lib/grade.sh"
+# shellcheck source=lib/template.sh
+source "$LAB_ROOT/lib/template.sh"
+# shellcheck source=lib/catchup.sh
+source "$LAB_ROOT/lib/catchup.sh"
 # shellcheck source=lib/progress.sh
 source "$LAB_ROOT/lib/progress.sh"
 
@@ -38,7 +42,8 @@ case "$cmd" in
   solution) cmd_show solution.md "$@" ;;
   status) cmd_status ;;
   grade) cmd_grade "$@" ;;
-  catchup | pause | resume | nuke | cost | selftest)
+  catchup) cmd_catchup "$@" ;;
+  pause | resume | nuke | cost | selftest)
     echo "not implemented yet" >&2
     exit 2
     ;;
