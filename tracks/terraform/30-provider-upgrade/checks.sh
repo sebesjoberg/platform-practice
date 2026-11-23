@@ -11,7 +11,7 @@ export TF30_SRC_RE="git::https://github\\.com/$GH_OWNER/$MODULES_REPO\\.git//[^?
 
 # tf30_stacks: every stack directory (a backend "azurerm" block), bootstrap included, relative.
 tf30_stacks() {
-  grep -rlE --include='*.tf' 'backend[[:space:]]+"azurerm"' terraform 2>/dev/null |
+  grep --exclude-dir=.terraform -rlE --include='*.tf' 'backend[[:space:]]+"azurerm"' terraform 2>/dev/null |
     grep -v '/\.terraform/' | xargs -r -n1 dirname | grep -vE '^terraform/modules(/|$)' | sort -u
 }
 # tf30_all_stacks <test> : <test> <dir> holds for every stack, and there is at least one.
@@ -72,15 +72,17 @@ check_code "every module requires azurerm >= 5.x, < 6.0" \
   "every module's versions.tf in $MODULES_REPO needs azurerm version = \">= 5.14, < 6.0\""
 
 check_code "the DNS zone links name their zone by ID (azurerm 5.0)" \
-  '! grep -rqsE "^[[:space:]]*private_dns_zone_name[[:space:]]*=" terraform "${MODULES_DIR:-/nonexistent}" --include="*.tf" && grep -rqsE "^[[:space:]]*private_dns_zone_id[[:space:]]*=" terraform/landing-zone --include="*.tf" && grep -qsE "^[[:space:]]*private_dns_zone_id[[:space:]]*=" "${MODULES_DIR:-/nonexistent}"/spoke/*.tf' \
+  '! grep --exclude-dir=.terraform -rqsE "^[[:space:]]*private_dns_zone_name[[:space:]]*=" terraform "${MODULES_DIR:-/nonexistent}" --include="*.tf" && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*private_dns_zone_id[[:space:]]*=" terraform/landing-zone --include="*.tf" && grep -qsE "^[[:space:]]*private_dns_zone_id[[:space:]]*=" "${MODULES_DIR:-/nonexistent}"/spoke/*.tf' \
   "azurerm_private_dns_zone_virtual_network_link takes private_dns_zone_id in 5.x (landing-zone's hub links and the spoke module); private_dns_zone_name and resource_group_name are gone"
+
+check_code "subnets keep default outbound access explicitly (spoke module and landing-zone)"   'grep -qsE "^[[:space:]]*default_outbound_access_enabled[[:space:]]*=[[:space:]]*true" "${MODULES_DIR:-/nonexistent}"/spoke/*.tf && grep --exclude-dir=.terraform -rqsE "^[[:space:]]*default_outbound_access_enabled[[:space:]]*=[[:space:]]*true" terraform/landing-zone --include="*.tf"'   "set default_outbound_access_enabled = true on the spoke module's subnets and landing-zone's hub subnets: the web VMs reach apt through it, and a provider default can change"
 
 check_code "CHANGELOG.md has a 3.0.0 entry for the move to azurerm 5" \
   'c="${MODULES_DIR:-}/CHANGELOG.md" && [[ -f "$c" ]] && grep -qE "^#+[^0-9]*v?3\.0\.0" "$c" && grep -qiE "azurerm[^0-9]*5" "$c" && grep -qF private_dns_zone_ids "$c"' \
   "add a \"## 3.0.0\" entry to $MODULES_REPO/CHANGELOG.md: azurerm 5.x is required and spoke takes private_dns_zone_ids; say what callers change"
 
 check_code "every module source pins v3 or later" \
-  'refs="$(grep -rhoE "$TF30_SRC_RE" terraform --include="*.tf" | sed -E "s/.*ref=v([0-9]+).*/\1/")" && [[ -n "$refs" ]] && ! grep -qvE "^([3-9]|[1-9][0-9]+)$" <<<"$refs"' \
+  'refs="$(grep --exclude-dir=.terraform -rhoE "$TF30_SRC_RE" terraform --include="*.tf" | sed -E "s/.*ref=v([0-9]+).*/\1/")" && [[ -n "$refs" ]] && ! grep -qvE "^([3-9]|[1-9][0-9]+)$" <<<"$refs"' \
   "every module source in terraform/ must pin ?ref=v3.0.0 (or later): a v2.x module caps azurerm below 5.0 and terraform init fails"
 
 check_code "dependabot.yml updates terraform (providers and module refs) in every stack" \

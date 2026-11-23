@@ -21,6 +21,11 @@ Traps:
     `allow_nested_items_to_be_public` to `false` (both accounts set it), the Container Apps
     environment's `logs_destination` is no longer computed. Nothing in the guide forces a
     replacement of the VMs, NICs, public IP or vaults.
+- **Write down what you rely on.** The web VMs reach apt through their subnet's default outbound
+  access, which azurerm sets to `true` by default and Azure no longer turns on for new VNets.
+  v3.0.0 sets `default_outbound_access_enabled = true` on the spoke subnets (and landing-zone on
+  the hub's): a default that changes in a later minor would otherwise cut the VMs off without a
+  word in the plan.
 - **Order matters.** A stack on 5.x can't use a module capped `< 5.0`: `terraform init` fails.
   So the modules release `v3.0.0` first, then the platform PR moves the pins and the refs
   together.

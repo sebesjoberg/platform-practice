@@ -7,6 +7,7 @@
 | No resource providers registered by default | every stack | `resource_providers_to_register = [...]` in each provider block |
 | `azurerm_private_dns_zone_virtual_network_link`: `resource_group_name` and `private_dns_zone_name` removed | landing-zone `dns.tf`, spoke `hub.tf` | `private_dns_zone_id`; spoke input `private_dns_zone_ids` |
 | Modules capped `< 5.0` | all three modules | `>= 5.14, < 6.0`, release `v3.0.0` |
+| (insurance) default outbound access is only a provider default | spoke subnets, landing-zone hub subnets | `default_outbound_access_enabled = true` |
 
 ## Modules repo
 
@@ -94,7 +95,8 @@ provider "azurerm" {
 
 `shared/jump.tf` and `env-dev/web.tf`: `linux-vm?ref=v3.0.0`.
 
-Lock files, from the repo root:
+Lock files: copy the starter's (they were made exactly like this), or make them yourself from the
+repo root:
 
 ```bash
 for s in bootstrap landing-zone observability shared env-dev env-prod; do

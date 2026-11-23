@@ -27,6 +27,8 @@ entry says what.
 4. Plan. Expect `No changes.`: the link addresses (keyed by zone name) and their Azure IDs are
    the same; the provider fills in `private_dns_zone_id` from the link's ID when it reads it.
 
+`spoke` also sets `default_outbound_access_enabled = true` on its subnets explicitly (no change
+in Azure: it was the provider's default; now a changed default can't cut the VMs off from apt).
 `app-env` and `linux-vm` change only their provider range.
 
 ## 2.2.0 (2026-11-23)

@@ -48,6 +48,11 @@ run "dev_names_and_layout" {
   }
 
   assert {
+    condition     = alltrue([for s in azurerm_subnet.this : s.default_outbound_access_enabled])
+    error_message = "every subnet keeps default outbound access, explicitly (the web VMs reach apt through it)"
+  }
+
+  assert {
     condition     = length(azurerm_network_security_group.this) == 3 && length(azurerm_subnet_network_security_group_association.this) == 3
     error_message = "every subnet needs its own NSG and association"
   }
