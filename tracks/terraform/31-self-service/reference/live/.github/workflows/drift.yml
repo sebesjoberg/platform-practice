@@ -1,0 +1,137 @@
+name: drift
+
+# Drift detection (tf-27): plan every stack against what is really in Azure, on a schedule and on
+# demand. A plan that wants to change something (exit code 2 of -detailed-exitcode) means Azure
+# no longer matches main: someone changed it by hand, or a merge never got applied. The run then
+# opens an issue labelled "drift" (or adds to the open one) and fails, so it shows up red. A
+# clean run closes the open drift issue. It never applies anything: reconciling is a decision.
+on:
+  schedule:
+    - cron: "17 5 * * 1-5" # weekdays 05:17 UTC, before anyone starts work
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One drift run at a time; it waits for state locks, never holds them for long.
+concurrency:
+  group: terraform-drift
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.17.2"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  # A plan needs every variable, as in terraform.yml: secrets are masked in the public logs.
+  TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
+  TF_VAR_learner_ip: ${{ secrets.LEARNER_IP }}
+  TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
+  TF_VAR_github_token: ${{ github.token }} # tf-31: the team stacks' GitHub API lookup
+  STACK_ORDER: "landing-zone shared env-dev env-prod observability teams/payments"
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC: a scheduled run on main gets the subject ...:ref:refs/heads/main (gh-main)
+      issues: write # open, comment on and close the drift issue
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find stacks
+        id: stacks
+        run: |
+          list="$(bash .github/scripts/stacks.sh all)"
+          if [ -z "$list" ]; then echo "::error::no stacks found under terraform/"; exit 1; fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false # the wrapper would hide plan's exit code
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: terraform plan -detailed-exitcode
+        id: plan
+        env:
+          STACKS: ${{ steps.stacks.outputs.list }}
+        run: |
+          # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes (drift).
+          report="$RUNNER_TEMP/drift.md"
+          max=6000 # bytes of plan output per stack in the issue
+          drifted="" failed=""
+          {
+            echo "Run [${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on ${GITHUB_SHA::7} found differences between main and Azure."
+            echo
+          } > "$report"
+          for s in $STACKS; do
+            d="terraform/$s"
+            log="$RUNNER_TEMP/plan-${s//\//-}.log"
+            rc=0
+            terraform -chdir="$d" init -input=false -no-color >"$log" 2>&1 || rc=1
+            if [ "$rc" -eq 0 ]; then
+              terraform -chdir="$d" plan -input=false -no-color -lock-timeout=5m -detailed-exitcode >>"$log" 2>&1 || rc=$?
+            fi
+            cat "$log"
+            case "$rc" in
+              0) echo "$s: no drift" ;;
+              2)
+                drifted="$drifted $s"
+                # From the first change to the end; into a file first, so head never cuts a pipe
+                # (run steps use bash -o pipefail).
+                sed -n '/Objects have changed outside of Terraform\|Terraform will perform/,$p' "$log" > "$log.drift"
+                {
+                  echo "<details><summary><b>$s</b>: $(grep -m1 -E '^Plan:' "$log" || echo changes)</summary>"
+                  echo
+                  echo '```'
+                  head -c "$max" "$log.drift"
+                  echo
+                  if [ "$(wc -c <"$log.drift")" -gt "$max" ]; then echo "(truncated, see the run log)"; fi
+                  echo '```'
+                  echo "</details>"
+                } >> "$report"
+                ;;
+              *) failed="$failed $s" ;;
+            esac
+          done
+          echo "drifted=${drifted# }" >> "$GITHUB_OUTPUT"
+          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
+      - name: Open or update the drift issue
+        if: steps.plan.outputs.drifted != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRIFTED: ${{ steps.plan.outputs.drifted }}
+        run: |
+          gh label create drift --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "Azure differs from main (drift.yml)" --force
+          n="$(gh issue list --repo "$GITHUB_REPOSITORY" --label drift --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/drift.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label drift \
+              --title "Drift detected: $DRIFTED" --body-file "$RUNNER_TEMP/drift.md"
+          fi
+      - name: Close the drift issue
+        if: steps.plan.outputs.drifted == '' && steps.plan.outputs.failed == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --repo "$GITHUB_REPOSITORY" --label drift --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "Run ${GITHUB_RUN_ID}: every stack plans clean again."
+          done
+      - name: Fail on drift or errors
+        if: steps.plan.outputs.drifted != '' || steps.plan.outputs.failed != ''
+        env:
+          DRIFTED: ${{ steps.plan.outputs.drifted }}
+          FAILED: ${{ steps.plan.outputs.failed }}
+        run: |
+          if [ -n "$DRIFTED" ]; then echo "::error::drift in: $DRIFTED (see the issue labelled drift)"; fi
+          if [ -n "$FAILED" ]; then echo "::error::plan failed in: $FAILED"; fi
+          exit 1
