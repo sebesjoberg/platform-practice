@@ -36,7 +36,8 @@ grade_task() {
   [[ "$GRADE_PASSED" -eq "$GRADE_TOTAL" ]]
 }
 
-# grade_quiet <id>: run the task's checks with output suppressed; 0 only when all pass.
+# grade_quiet <id>: run the task checks with output suppressed. Returns the grade status:
+# 0 all pass, 1 some check fails, anything else = cannot grade (e.g. 4 not logged in).
 # No progress side effects, no timing. Never exits the caller.
 grade_quiet() {
   local id=$1

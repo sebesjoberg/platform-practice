@@ -35,6 +35,17 @@ render_env() {
   source "$REPO_ROOT/lib/template.sh"
 }
 
+source_libs() {
+  set -a
+  # shellcheck disable=SC1091
+  source "$LAB_HOME/config.env"
+  set +a
+  for l in common tasks template catchup; do
+    # shellcheck disable=SC1090
+    source "$REPO_ROOT/lib/$l.sh"
+  done
+}
+
 @test "render replaces known tokens" {
   render_env
   mkdir -p "$TEST_TMP/src/d"
@@ -137,10 +148,22 @@ render_env() {
   run "$LAB" catchup --yes tf-25
   [ "$status" -eq 0 ]
   run cat "$HOOK_LOG"
-  [ "${lines[0]}" = "tf-01 before-replace acme-platform" ]
-  [ "${lines[1]}" = "tf-02 after-push acme-platform" ]
-  [ "${lines[2]}" = "tf-25 after-push acme-platform" ]
-  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]}" = "tf-02 after-push acme-platform" ]
+  [ "${lines[1]}" = "tf-25 after-push acme-platform" ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "creates-repo hook skipped when repo exists" {
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 0 ]
+  ! grep -q before-replace "$HOOK_LOG"
+}
+
+@test "creates-repo hook runs before replace when repo is missing" {
+  rm -rf "$(LIVE)/.git"
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 6 ]
+  [ "$(cat "$HOOK_LOG")" = "tf-01 before-replace acme-platform" ]
 }
 
 @test "failing catchup.sh stops with exit 1 naming the task" {
@@ -185,4 +208,97 @@ render_env() {
   [ -f "$(LIVE)/ansible/site.yml" ]
   [ ! -e "$(LIVE)/mine.txt" ]
   [ "$(git -C "$(LIVE)" log -1 --format=%s)" = "catchup: an-01" ]
+  run cat "$HOOK_LOG"
+  [ "${lines[0]}" = "tf-02 after-push acme-platform" ]
+  [ "${lines[1]}" = "tf-25 after-push acme-platform" ]
+  [ "${lines[2]}" = "an-01 after-push acme-platform" ]
+  [ "${#lines[@]}" -eq 3 ]
+  [ "$(git -C "$TEST_TMP/remote-live.git" branch --list 'my-work/*' | wc -l)" -eq 2 ]
+}
+
+@test "ansible catchup aborts when tf-25 cannot be graded" {
+  cp -r "$TRACKS_DIR" "$TEST_TMP/tracks"
+  echo 'check "cloud" true "never"' >"$TEST_TMP/tracks/terraform/03-late/checks.sh"
+  # no fake az login response: preflight exits 4
+  TRACKS_DIR="$TEST_TMP/tracks" run "$LAB" catchup --yes an-01
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"cannot check tf-25 state"* ]]
+  [ -f "$(LIVE)/mine.txt" ]
+  [ -z "$(git -C "$TEST_TMP/remote-live.git" branch --list 'my-work/*')" ]
+}
+
+@test "capstone catchup builds full reference" {
+  source_libs
+  build_reference cap-01 "$TEST_TMP/outc"
+  [ -f "$TEST_TMP/outc/live/terraform/late.tf" ]
+  [ -f "$TEST_TMP/outc/live/ansible/roles.yml" ]
+  [ -f "$TEST_TMP/outc/live/cap.txt" ]
+  run "$LAB" catchup --yes cap-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$(LIVE)/mine.txt" ]
+  [ -f "$(LIVE)/cap.txt" ]
+  [ -f "$(LIVE)/ansible/roles.yml" ]
+  [ "$(git -C "$(LIVE)" log -1 --format=%s)" = "catchup: cap-01" ]
+  [ -f "$TEST_TMP/acme/acme-terraform-modules/m.tf" ]
+}
+
+@test "catchup refuses when local main is behind origin" {
+  other="$TEST_TMP/other"
+  git clone -q "$TEST_TMP/remote-live.git" "$other"
+  echo merged >"$other/merged.txt"
+  git -C "$other" add -A
+  git -C "$other" commit -q -m "merged PR"
+  git -C "$other" push -q origin main
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"pull/merge first"* ]]
+  git -C "$TEST_TMP/remote-live.git" show main:merged.txt
+  [ -z "$(git -C "$TEST_TMP/remote-live.git" branch --list 'my-work/*')" ]
+}
+
+@test "catchup refuses without local main" {
+  rm -rf "$(LIVE)"
+  git init -q -b main "$(LIVE)"
+  git -C "$(LIVE)" remote add origin "$TEST_TMP/remote-live.git"
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"no local main"* ]]
+  git -C "$TEST_TMP/remote-live.git" show main:mine.txt
+}
+
+@test "catchup refuses when not on main" {
+  git -C "$(LIVE)" checkout -q -b feature
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"switch to main first (currently on feature)"* ]]
+  [ "$(git -C "$(LIVE)" rev-parse main)" = "$(git -C "$(LIVE)" rev-parse feature)" ]
+  [ -f "$(LIVE)/mine.txt" ]
+}
+
+@test "force push uses lease on verified sha" {
+  real_git="$(command -v git)"
+  other="$TEST_TMP/other"
+  git clone -q "$TEST_TMP/remote-live.git" "$other"
+  mkdir -p "$TEST_TMP/gitwrap"
+  cat >"$TEST_TMP/gitwrap/git" <<WRAP
+#!/usr/bin/env bash
+case "\$*" in
+  *--force-with-lease=main:*)
+    verified="\$(printf '%s
+' "\$@" | sed -n 's/^--force-with-lease=main://p')"
+    echo "\$verified" >"$TEST_TMP/lease.arg"
+    echo racing >"$other/race.txt"
+    $real_git -C "$other" add -A
+    $real_git -C "$other" commit -q -m race
+    $real_git -C "$other" push -q origin main
+    ;;
+esac
+exec $real_git "\$@"
+WRAP
+  chmod +x "$TEST_TMP/gitwrap/git"
+  expected="$(git -C "$TEST_TMP/remote-live.git" rev-parse main)"
+  PATH="$TEST_TMP/gitwrap:$PATH" run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 1 ]
+  [ "$(cat "$TEST_TMP/lease.arg")" = "$expected" ]
+  git -C "$TEST_TMP/remote-live.git" show main:race.txt
 }
