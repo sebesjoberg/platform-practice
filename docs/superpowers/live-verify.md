@@ -122,3 +122,14 @@ Things the offline gate cannot prove. Check each during the live selftest; fix a
 - [ ] Fix round 1, tf-30: `default_outbound_access_enabled = true` on the spoke (v3.0.0) and hub subnets plans `No changes.` on the 4→5 upgrade (it was the provider default); a web VM still reaches `http://archive.ubuntu.com/ubuntu/` afterwards. The starter's lock files copy into each stack and `terraform init` accepts them on Linux (CI, WSL).
 - [ ] Fix round 1, tf-31 token scope: `TF_VAR_github_token` only on the plan/apply steps of terraform.yml and the plan step of drift.yml; the team stack's plan and apply still read the repo with it.
 - [ ] Fix round 2: `GET /actions/workflows/terraform.yml/runs?event=pull_request` carries `pull_requests[0].number` for same-repo PR runs, and `gh api --paginate repos/{o}/{r}/pulls/{n}/files --jq '.[].filename'` lists the changed files; the tf-17/18 check ignores runs of PRs without Terraform paths (TF_PATHS read from the learner's terraform.yml) and judges the rest by conclusion. `az group list --tag vended_by=bootstrap --query "[?starts_with(name, 'rg-{P}-')].name"` finds the vended team groups for nuke.
+
+## Ansible phase A (an-01…an-05)
+- [ ] an-01: `./lab.sh catchup an-01` builds `ansible/.venv` (a few hundred MB); grade passes the venv checks.
+- [ ] an-02: azure_rm plugin with `auth_source: cli` (WSL Linux az, not /mnt/c az): graph shows role_jump/role_web/env_hub/env_dev; `public_ipv4_address` set on jump; `ansible all -m ping` via ProxyCommand; check timing (graph 1 load, jump-IP 2 loads, ping 2 loads; 180 s each).
+- [ ] an-03: drop-in wins over `50-cloud-init.conf`; `systemctl reload ssh` with ssh.socket activation; chrony (PTP refclock) syncs with `sources.d/base.sources`; apt via default outbound; second run ≤ 300 s with changed=0; `-e ansible_user=ops -b` through the jump.
+- [ ] an-03: ssh-agent holding 3+ unrelated keys still works (MaxAuthTries 3 + IdentitiesOnly on both hops).
+- [ ] an-03: first-boot dpkg lock (catchup right after tf-25 / resume): apt waits up to 600 s instead of failing.
+- [ ] an-04: first `pre-commit run --all-files` ≤ 300 s; hook installed with `--config ansible/.pre-commit-config.yaml`.
+- [ ] an-05: `molecule test` with the unprivileged systemd container on Docker Desktop WSL (cgroup v2) ≤ 900 s.
+- [ ] Catchup end to end: `catchup an-05` from a tf-25 state runs an-01 (venv), an-03 (site.yml), an-04 (hook); `grade an-05` passes.
+- [ ] Ansible-only PR after tf-24's change filter: plan green, apply/apply-prod skipped, no approval requested.
