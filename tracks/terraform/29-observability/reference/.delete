@@ -1,0 +1,2 @@
+# tf-29: the workspace and the Activity Log export moved to terraform/observability.
+live/terraform/landing-zone/monitoring.tf
