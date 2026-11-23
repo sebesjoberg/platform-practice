@@ -1,0 +1,28 @@
+---
+# Molecule scenario for role nginx: the same systemd-capable Ubuntu 24.04 container as role base
+# (Dockerfile.j2 is a copy), so nginx, its validation and the reload handler run for real.
+#   cd ansible/roles/nginx && molecule test
+driver:
+  name: docker
+
+platforms:
+  - name: nginx-noble
+    image: ubuntu:24.04
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    command: /lib/systemd/systemd
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../collections:${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}
+
+verifier:
+  name: ansible

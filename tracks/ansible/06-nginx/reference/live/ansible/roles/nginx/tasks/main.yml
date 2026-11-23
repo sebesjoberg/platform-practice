@@ -1,0 +1,50 @@
+---
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 600
+
+- name: Create the document root
+  ansible.builtin.file:
+    path: "{{ nginx_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the start page
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: "{{ nginx_root }}/index.html"
+    owner: root
+    group: root
+    mode: "0644"
+
+# `nginx -t -c %s` checks a complete configuration, not a server-block snippet. The role owns all
+# of nginx.conf (its server block included), so what is validated here is exactly what nginx
+# loads on the reload. A broken template never reaches /etc/nginx.
+- name: Write the nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nginx -t -q -c %s
+  notify: Reload nginx
+
+# nginx.conf no longer includes sites-enabled/; remove the package's site so nobody edits a file
+# that has no effect.
+- name: Remove the distribution's default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Keep nginx running and enabled
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: started
+    enabled: true

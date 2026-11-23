@@ -1,0 +1,37 @@
+# {{ ansible_managed }} (role nginx)
+# The complete configuration, owned by the role: Ansible validates this file with nginx -t before
+# it replaces /etc/nginx/nginx.conf. Include paths are absolute because with -c nginx resolves
+# relative paths against the directory of the checked file (a temporary one during validation).
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections {{ nginx_worker_connections }};
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    types_hash_max_size 2048;
+    server_tokens off;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log /var/log/nginx/access.log;
+    gzip on;
+
+    server {
+        listen 80 default_server;
+        server_name _;
+        root {{ nginx_root }};
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+}

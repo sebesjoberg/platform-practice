@@ -1,0 +1,43 @@
+---
+# Assertions about the converged container. Registered variables carry the role prefix: ansible-lint
+# counts this file as part of the role.
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Validate the configuration nginx runs with
+      ansible.builtin.command: /usr/sbin/nginx -t
+      changed_when: false
+
+    - name: Read the state of the nginx service
+      ansible.builtin.systemd_service:
+        name: nginx
+      register: nginx_verify_unit
+
+    - name: Nginx is active and enabled
+      ansible.builtin.assert:
+        that:
+          - nginx_verify_unit.status.ActiveState == "active"
+          - nginx_verify_unit.status.UnitFileState == "enabled"
+
+    - name: Fetch the start page
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: nginx_verify_page
+
+    - name: The start page names the host and the environment
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['hostname'] in nginx_verify_page.content
+          - "'env: molecule' in nginx_verify_page.content"
+
+    - name: Look for the distribution's default site
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/default
+      register: nginx_verify_default_site
+
+    - name: The default site is gone
+      ansible.builtin.assert:
+        that: not nginx_verify_default_site.stat.exists
