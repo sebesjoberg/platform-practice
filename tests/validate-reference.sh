@@ -68,17 +68,29 @@ rel() { echo "${1#"$OUT"/}"; }
 # ---- module sources from the modules repo ----------------------------------------------
 # From tf-19 the stacks pull modules from the learner's modules repo by tag:
 #   source = "git::https://github.com/<GH_OWNER>/<MODULES_REPO>.git//<path>?ref=<tag>"
-# Validation stays offline: each such source is rewritten to the reference's own
-# <out>/modules/<path> (relative path), which holds the newest version of that module.
-# A stack pinning an older *major* version than the newest one this reference pins for the same
-# path (tf-20: env-prod on v1 while env-dev moved to v2) can't be validated against that tree,
-# so it is skipped here. Its version is validated by the reference of the task that released it:
-# run this script for tf-19 as well as tf-20 (the phase gate does both).
-declare -A SKIP_DIRS=()
+# Validation stays offline: each such source is rewritten to a local copy of that module.
+# - A pin of the newest major version this reference pins for that path uses the reference's
+#   own <out>/modules/<path>, which holds the newest version (it may not be released yet).
+# - A pin of an older major (tf-20: env-prod on v1 while env-dev moved to v2) uses the module as
+#   released: <out>/releases/<tag>/modules/<path>, built from the reference of the task that
+#   released <tag>, looked up in tracks/<track>/lib/module-releases.txt (the same table catchup
+#   tags from). An older tag missing from the table fails, naming the table.
+# So every stack is validated in every run.
+
+# module_release_task <tag>: the task that released <tag>, from any track's release table.
+module_release_task() {
+  local t
+  for t in "$TRACKS_DIR"/*/lib/module-releases.txt; do
+    [[ -f "$t" ]] || continue
+    awk -v t="$1" '!/^[[:space:]]*#/ && $1 == t { print $2; f = 1; exit } END { exit !f }' "$t" && return 0
+  done
+  return 1
+}
+
 rewrite_module_sources() {
-  local re f src path ref major dir target relp text
+  local re f src path ref major dir target relp text task
   local -A newest=()
-  re="git::https://github\\.com/${GH_OWNER}/${MODULES_REPO}\\.git//[^?\"]+\\?ref=[^\"]+"
+  re="git::https://github\.com/${GH_OWNER}/${MODULES_REPO}\.git//[^?\"]+\?ref=[^\"]+"
   local -a hits=()
   [[ -d "$OUT/live" ]] || return 0
   mapfile -t hits < <(grep -rHoE --include='*.tf' "\"$re\"" "$OUT/live" "$OUT/modules" 2>/dev/null | sort -u || true)
@@ -94,12 +106,17 @@ rewrite_module_sources() {
   for f in "${hits[@]}"; do
     src="${f#*:}" src="${src//\"/}" f="${f%%:*}" dir="$(dirname "$f")"
     path="${src#*.git//}" path="${path%%\?ref=*}" ref="${src##*\?ref=}"
-    if [[ "$ref" =~ ^v?([0-9]+)\. && ${BASH_REMATCH[1]} -lt ${newest[$path]:-0} ]]; then
-      SKIP_DIRS[$dir]="pins $path?ref=$ref, older than the v${newest[$path]} module in this reference"
-      continue
-    fi
     target="$OUT/modules/$path"
-    [[ -d "$target" ]] || die 1 "$(rel "$f"): $src has no reference module at modules/$path"
+    if [[ "$ref" =~ ^v?([0-9]+)\. && ${BASH_REMATCH[1]} -lt ${newest[$path]:-0} ]]; then
+      task="$(module_release_task "$ref")" ||
+        die 1 "$(rel "$f"): pins $path?ref=$ref, older than the v${newest[$path]} module in this reference, and $ref is in no tracks/<track>/lib/module-releases.txt; add \"$ref <task id>\" there"
+      if [[ ! -d "$OUT/releases/$ref" ]]; then
+        (build_reference "$task" "$OUT/releases/$ref") >/dev/null || die 1 "could not build release $ref from $task"
+        echo "release $ref: the modules tree of $task's reference"
+      fi
+      target="$OUT/releases/$ref/modules/$path"
+    fi
+    [[ -d "$target" ]] || die 1 "$(rel "$f"): $src has no reference module at $(rel "$target")"
     relp="$(realpath --relative-to="$dir" "$target")"
     [[ "$relp" == .* ]] || relp="./$relp"
     text="$(cat "$f")"
@@ -129,10 +146,6 @@ if [[ ${#tf_dirs[@]} -gt 0 ]]; then
   step "tflint --init" "$REPO/tests" tflint --init --config "$REPO/tests/tflint.hcl"
   for d in "${tf_dirs[@]}"; do
     r="$(rel "$d")"
-    if [[ -n "${SKIP_DIRS[$d]:-}" ]]; then
-      echo "skip  $r (${SKIP_DIRS[$d]}; validated with the task that released it)"
-      continue
-    fi
     step "init $r" "$d" terraform init -backend=false -input=false
     step "validate $r" "$d" terraform validate
     step "tflint $r" "$d" tflint --config "$REPO/tests/tflint.hcl"

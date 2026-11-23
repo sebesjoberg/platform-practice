@@ -335,39 +335,113 @@ tag_env() {
   git -C "$MODS" push -q origin main
 }
 
+MT='source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh"'
+
 @test "modules_tag tags each release at its own reference tree" {
   tag_env
-  run bash -c 'source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag v1.0.0 tf-19 && modules_tag v2.0.0 tf-20'
+  run bash -c "$MT && modules_tag v1.0.0 && modules_tag v2.0.0"
   echo "$output"
   [ "$status" -eq 0 ]
   git -C "$TEST_TMP/remote-mod.git" show v1.0.0:spoke/variables.tf | grep -q 'variable "address_space"'
   git -C "$TEST_TMP/remote-mod.git" show v2.0.0:spoke/variables.tf | grep -q 'variable "vnet_cidr"'
   [ "$(git -C "$TEST_TMP/remote-mod.git" rev-parse 'v2.0.0^{commit}')" = "$(git -C "$TEST_TMP/remote-mod.git" rev-parse main)" ]
-  run bash -c 'source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag v1.0.0 tf-19'
+  run bash -c "$MT && modules_tag v1.0.0"
   [ "$status" -eq 0 ]
   [[ "$output" == *"already holds the reference module"* ]]
+  [[ "$output" != *WARNING* ]]
 }
 
-@test "modules_tag saves and moves a tag with other content" {
+@test "modules_tag warns, saves and moves a pushed tag with other content" {
   tag_env
   git -C "$MODS" tag -a v1.0.0 -m mine HEAD~1
   git -C "$MODS" push -q origin v1.0.0
-  run bash -c 'source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag v1.0.0 tf-19'
+  run bash -c "$MT && modules_tag v1.0.0"
   echo "$output"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"saved as branch my-work/tag-v1.0.0-"* ]]
+  [[ "$output" == *"WARNING: your pushed tag v1.0.0"*"my-work/tag-v1.0.0-"* ]]
   git -C "$TEST_TMP/remote-mod.git" show v1.0.0:spoke/variables.tf | grep -q 'variable "address_space"'
   [ -n "$(git -C "$TEST_TMP/remote-mod.git" branch --list 'my-work/tag-v1.0.0-*')" ]
 }
 
-@test "modules_tag_pinned tags only the majors the live tree pins" {
+@test "modules_tag keeps the learner's tag when the prompt is declined" {
   tag_env
-  mkdir -p "$(LIVE)/terraform/env-prod"
+  git -C "$MODS" tag -a v1.0.0 -m mine HEAD~1
+  git -C "$MODS" push -q origin v1.0.0
+  mine="$(git -C "$TEST_TMP/remote-mod.git" rev-parse 'v1.0.0^{commit}')"
+  run bash -c "echo n | MODULES_TAG_PROMPT=1 bash -c '$MT && modules_tag v1.0.0'"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept your v1.0.0"* ]]
+  [ "$(git -C "$TEST_TMP/remote-mod.git" rev-parse 'v1.0.0^{commit}')" = "$mine" ]
+  [ -z "$(git -C "$TEST_TMP/remote-mod.git" branch --list 'my-work/tag-*')" ]
+  # catchup --yes never asks
+  run bash -c "echo n | MODULES_TAG_PROMPT=1 CATCHUP_YES=1 bash -c '$MT && modules_tag v1.0.0'"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$TEST_TMP/remote-mod.git" rev-parse 'v1.0.0^{commit}')" != "$mine" ]
+}
+
+@test "modules_tag backs up a local-only tag before overwriting it" {
+  tag_env
+  git -C "$MODS" tag -a v1.0.0 -m mine-local HEAD~1
+  mine="$(git -C "$MODS" rev-parse 'v1.0.0^{commit}')"
+  run bash -c "$MT && modules_tag v1.0.0"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING: your local (unpushed) tag v1.0.0"* ]]
+  b="$(git -C "$MODS" branch --list 'my-work/tag-v1.0.0-*-local' | tr -d ' *')"
+  [ -n "$b" ]
+  [ "$(git -C "$MODS" rev-parse "$b")" = "$mine" ]
+  git -C "$TEST_TMP/remote-mod.git" show v1.0.0:spoke/variables.tf | grep -q 'variable "address_space"'
+}
+
+@test "modules_tag_pinned tags exactly the pinned releases and fails on unknown ones" {
+  tag_env
+  mkdir -p "$(LIVE)/terraform/env-prod" "$(LIVE)/terraform/env-dev"
   printf 'module "spoke" {\n  source = "git::https://github.com/learner/acme-terraform-modules.git//spoke?ref=v1.0.0"\n}\n' \
     >"$(LIVE)/terraform/env-prod/main.tf"
-  run bash -c 'cd "$(dirname "$0")" && source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag_pinned' "$(LIVE)/x"
+  run bash -c 'cd "$1" && eval "$2" && modules_tag_pinned' _ "$(LIVE)" "$MT"
   echo "$output"
   [ "$status" -eq 0 ]
   git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v1.0.0
   ! git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v2.0.0
+  printf 'module "spoke" {\n  source = "git::https://github.com/learner/acme-terraform-modules.git//spoke?ref=v1.1.0"\n}\n' \
+    >"$(LIVE)/terraform/env-dev/main.tf"
+  run bash -c 'cd "$1" && eval "$2" && modules_tag_pinned' _ "$(LIVE)" "$MT"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"v1.1.0 is not a known module release"*"module-releases.txt"* ]]
+}
+
+# --- tf-17/tf-18 live check: PR run green, or a newer green catchup run on main -------------
+
+# ci_case <pr runs json> <main runs json>: runs ci_pr_green_or_caught_up against a gh stub that
+# applies the --jq filter to the canned API answer.
+ci_case() {
+  PR_JSON=$1 MAIN_JSON=$2 run bash -c '
+    gh() { case "$2" in *event=pull_request*) jq -c "$4" <<<"$PR_JSON" ;; *) jq -c "$4" <<<"$MAIN_JSON" ;; esac; }
+    source "$REPO_ROOT/tracks/terraform/lib/ci-runs.sh"
+    ci_pr_green_or_caught_up learner/acme-platform'
+}
+run_json() { # run_json <conclusion> <created_at> [message]
+  printf '{"workflow_runs":[{"conclusion":"%s","created_at":"%s","head_commit":{"message":"%s"}}]}' "$1" "$2" "${3:-x}"
+}
+
+@test "ci check passes on a green PR run" {
+  ci_case "$(run_json success 2026-11-23T10:00:00Z)" "$(run_json failure 2026-11-23T11:00:00Z)"
+  [ "$status" -eq 0 ]
+}
+
+@test "ci check passes on a newer green catchup run on main after a red PR run" {
+  ci_case "$(run_json failure 2026-11-23T10:00:00Z)" "$(run_json success 2026-11-23T11:00:00Z 'catchup: tf-18')"
+  [ "$status" -eq 0 ]
+  ci_case '{"workflow_runs":[]}' "$(run_json success 2026-11-23T11:00:00Z 'catchup: tf-18')"
+  [ "$status" -eq 0 ]
+}
+
+@test "ci check fails on a red PR run without a newer catchup run" {
+  ci_case "$(run_json failure 2026-11-23T10:00:00Z)" "$(run_json success 2026-11-23T11:00:00Z 'Merge pull request #7')"
+  [ "$status" -ne 0 ]
+  ci_case "$(run_json failure 2026-11-23T12:00:00Z)" "$(run_json success 2026-11-23T11:00:00Z 'catchup: tf-18')"
+  [ "$status" -ne 0 ]
+  ci_case "$(run_json failure 2026-11-23T10:00:00Z)" "$(run_json failure 2026-11-23T11:00:00Z 'catchup: tf-18')"
+  [ "$status" -ne 0 ]
 }

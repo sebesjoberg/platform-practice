@@ -360,19 +360,46 @@ vr_stack() {
   [[ "$output" == *"ok    validate modules/mod"* ]]
 }
 
-@test "validate-reference skips a stack pinned to an older major version" {
+# vr_release_fixture: vr-01 releases v1 of mod (no inputs), vr-02 releases v2 (required input x).
+# vr-02's dev stack pins v2 (passes x), its prod stack still pins v1 (passes nothing): prod only
+# validates against v1, so it proves the older pin is resolved to vr-01's release.
+vr_release_fixture() {
   vr_module_fixture
+  rm -rf "$VR_REF/live/terraform/stack"
+  VR2="$TRACKS_DIR/vr/02-y/reference"
+  mkdir -p "$VR2/modules/mod" "$TRACKS_DIR/vr/lib"
+  printf -- '---\nid: vr-02\ntitle: Y\ntarget_minutes: 5\nrequires: [vr-01]\n---\n# Y\n' >"$TRACKS_DIR/vr/02-y/task.md"
+  printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nvariable "x" {\n  type = string\n}\n\nresource "terraform_data" "m" {\n  input = var.x\n}\n\noutput "id" {\n  value = terraform_data.m.id\n}\n' \
+    >"$VR2/modules/mod/main.tf"
+  mkdir -p "$VR2/live/terraform/dev" "$VR2/live/terraform/prod"
+  printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nmodule "m" {\n  source = "git::https://github.com/{{GH_OWNER}}/{{MODULES_REPO}}.git//mod?ref=v2.0.0"\n  x      = "dev"\n}\n' \
+    >"$VR2/live/terraform/dev/main.tf"
+  printf 'terraform {\n  required_version = ">= 1.6"\n}\n\nmodule "m" {\n  source = "git::https://github.com/{{GH_OWNER}}/{{MODULES_REPO}}.git//mod?ref=v1.0.0"\n}\n' \
+    >"$VR2/live/terraform/prod/main.tf"
+  printf '# test release table\nv1.0.0 vr-01\nv2.0.0 vr-02\n' >"$TRACKS_DIR/vr/lib/module-releases.txt"
+}
+
+@test "validate-reference validates an older-major pin against the releasing task's module" {
+  vr_release_fixture
   command -v tflint >/dev/null || skip "tflint not on PATH"
   command -v trivy >/dev/null || skip "trivy not on PATH"
-  rm -rf "$VR_REF/live/terraform/stack"
-  vr_stack dev mod v2.0.0
-  vr_stack prod mod v1.0.0
-  run "$VALIDATE" vr-01 --no-molecule
+  run "$VALIDATE" vr-02 --no-molecule
   echo "$output"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"release v1.0.0: the modules tree of vr-01's reference"* ]]
+  [[ "$output" == *"live/terraform/prod/main.tf: mod?ref=v1.0.0 -> ../../../releases/v1.0.0/modules/mod"* ]]
+  [[ "$output" == *"live/terraform/dev/main.tf: mod?ref=v2.0.0 -> ../../../modules/mod"* ]]
+  [[ "$output" == *"ok    validate live/terraform/prod"* ]]
   [[ "$output" == *"ok    validate live/terraform/dev"* ]]
-  [[ "$output" == *"skip  live/terraform/prod (pins mod?ref=v1.0.0, older than the v2 module"* ]]
-  [[ "$output" != *"init live/terraform/prod"* ]]
+  [[ "$output" != *"skip  live"* ]]
+}
+
+@test "validate-reference fails on an older-major pin missing from the release table" {
+  vr_release_fixture
+  printf 'v2.0.0 vr-02\n' >"$TRACKS_DIR/vr/lib/module-releases.txt"
+  run "$VALIDATE" vr-02 --no-molecule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pins mod?ref=v1.0.0"*"module-releases.txt"* ]]
 }
 
 @test "validate-reference fails when a pinned module is not in the reference" {

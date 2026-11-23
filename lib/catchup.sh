@@ -153,7 +153,8 @@ _run_hook() { # _run_hook <id> <phase>
   d="$(task_dir "$1")"
   [[ -f "$d/catchup.sh" ]] || return 0
   mkdir -p "$LIVE_DIR"
-  (cd "$LIVE_DIR" && CATCHUP_PHASE=$2 bash "$d/catchup.sh") || die 1 "catchup.sh of $1 failed"
+  # CATCHUP_YES=1 (catchup --yes) tells hooks not to ask (tf-19/tf-20 before moving a release tag).
+  (cd "$LIVE_DIR" && CATCHUP_PHASE=$2 CATCHUP_YES="${CATCHUP_YES:-0}" bash "$d/catchup.sh") || die 1 "catchup.sh of $1 failed"
 }
 
 cmd_catchup() {
@@ -175,6 +176,8 @@ cmd_catchup() {
 
 _catchup() {
   local id=$1 yes=$2 scope=all tid out do_mod=0 rc kind need_live=0 need_mod=0
+  # shellcheck disable=SC2034 # read by _run_hook (dynamic scope)
+  local CATCHUP_YES=$yes
   local -a ids=()
   if [[ "$(task_track "$id")" == ansible ]]; then
     task_dir tf-25 >/dev/null || die 2 "tf-25 not found"

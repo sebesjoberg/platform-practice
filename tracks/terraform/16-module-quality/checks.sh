@@ -17,7 +17,13 @@ tf16_readme_lists_all() {
     grep -qw -- "$n" <<<"$sect" || return 1
   done
 }
-export -f spoke_module_dir tf_blocks_missing tf_block tf16_names tf16_readme_lists_all
+# tf16_capped_lower_bound <dir>: a provider version constraint with a >= lower bound and a < 5
+# cap, in either order (">= 4.81, < 5.0" or "< 5.0, >= 4.81").
+tf16_capped_lower_bound() {
+  grep -hE '^[[:space:]]+version[[:space:]]*=[[:space:]]*"' "$1"/*.tf |
+    grep -E '>=[[:space:]]*[0-9]' | grep -qE '<[[:space:]]*5(\.0)*[[:space:]]*(,|")'
+}
+export -f spoke_module_dir tf_blocks_missing tf_block tf16_names tf16_readme_lists_all tf16_capped_lower_bound
 
 check_code "every input and output of the spoke module has a description" \
   'd="$(spoke_module_dir)" && [[ -n "$(tf16_names "$d" output)" ]] && [[ -z "$(tf_blocks_missing "$d" variable description)$(tf_blocks_missing "$d" output description)" ]]' \
@@ -32,7 +38,7 @@ check_code "env and the address space input are validated" \
   "add validation blocks to variable \"env\" (dev or prod) and variable \"address_space\" (a /16 CIDR block)"
 
 check_code "the module states lower bounds (>=) for Terraform and azurerm (capped below 5.0), no ~>" \
-  'd="$(spoke_module_dir)" && grep -qsE "required_version[[:space:]]*=[[:space:]]*\">=" "$d"/*.tf && grep -qsE "^[[:space:]]+version[[:space:]]*=[[:space:]]*\">=[^\"]*<[[:space:]]*5(\.0)*\"" "$d"/*.tf && ! grep -qsE "^[[:space:]]*(required_version|version)[[:space:]]*=.*~>" "$d"/*.tf' \
+  'd="$(spoke_module_dir)" && grep -qsE "required_version[[:space:]]*=[[:space:]]*\">=" "$d"/*.tf && tf16_capped_lower_bound "$d" && ! grep -qsE "^[[:space:]]*(required_version|version)[[:space:]]*=.*~>" "$d"/*.tf' \
   "in the module: required_version = \">= 1.17\" and azurerm version = \">= 4.81, < 5.0\" (a lower bound, capped below the next major); the stacks keep their ~> pins"
 
 check_code "the module README has a terraform-docs section listing every input and output" \

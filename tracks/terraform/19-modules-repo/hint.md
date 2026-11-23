@@ -23,8 +23,10 @@ Traps:
 - **Local runs:** after changing `source`, run `terraform init -upgrade` (or plain `init`) in
   the stack: Terraform caches modules in `.terraform/modules` and tells you "Module source has
   changed".
-- **The live workflow's test step finds nothing now** (no `terraform/modules`), which is fine:
-  the module's tests run in the modules repo's CI. tflint and trivy in the platform repo still
+- **Keep the live workflow's `terraform test` step**, even though it finds nothing now (no
+  `terraform/modules`; it passes when the directory is missing). It's ready for the next local
+  module, and tf-17's check looks for it: delete it and `./lab.sh grade --all` fails tf-17. The
+  spoke's tests now run in the modules repo's CI. tflint and trivy in the platform repo still
   cover the stacks.
 - **Lock files stay out of the modules repo.** A module doesn't choose provider versions; the
   calling stack does (it gets its lock file in tf-30).

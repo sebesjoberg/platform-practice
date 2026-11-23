@@ -1,0 +1,7 @@
+# Module releases in the learner's modules repo, and the task whose reference holds each one.
+#   <tag> <task id>
+# Read by tracks/terraform/lib/modules-tag.sh (catchup creates these tags) and by
+# tests/validate-reference.sh (a stack pinning an older release is validated against that
+# task's reference). A task that releases a new module version adds its line here.
+v1.0.0 tf-19
+v2.0.0 tf-20

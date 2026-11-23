@@ -39,7 +39,8 @@ misconfigurations:
       TLS 1.2). Revisit when CI runs on the self-hosted runner.
 ```
 
-`.github/workflows/terraform.yml`, in the `plan` job after `terraform test (modules)`:
+`.github/workflows/terraform.yml`, in the `plan` job after `terraform test (modules)` and before
+`azure/login`:
 
 ```yaml
       - uses: terraform-linters/setup-tflint@v4

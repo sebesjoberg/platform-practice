@@ -16,7 +16,8 @@ request, and the team fixes it or writes down why it's acceptable.
 - [ ] `.tflint.hcl` at the root of the repo with the `terraform` plugin (`preset =
       "recommended"`) and the azurerm ruleset: `plugin "azurerm"`, `version = "0.29.0"`,
       `source = "github.com/terraform-linters/tflint-ruleset-azurerm"`.
-- [ ] Two steps in the `plan` job, still exactly the jobs `plan` and `apply`:
+- [ ] Two steps in the `plan` job, before `azure/login`, still exactly the jobs `plan` and
+      `apply`:
   - `tflint --init`, then tflint over every stack and module under `terraform/`
     (`--recursive`) with that config. Any warning fails the step.
   - `trivy config` over `terraform/` that fails the job on `HIGH` and `CRITICAL` findings
@@ -31,7 +32,7 @@ request, and the team fixes it or writes down why it's acceptable.
 ## Done when
 
 `./lab.sh grade` passes: `.tflint.hcl` enables the azurerm ruleset, the plan job runs tflint and
-a failing trivy config scan, and the latest pull request run and the latest run on `main` are
+a failing trivy config scan before logging in to Azure, and the latest pull request run and the latest run on `main` are
 green.
 
 Target: 20 minutes.

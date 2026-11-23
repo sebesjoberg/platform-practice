@@ -26,4 +26,6 @@ Traps:
 - **Pin versions** of tflint (`tflint_version`), the ruleset (`version` in `.tflint.hcl`) and
   trivy. A new rule in a newer version should arrive in a PR, not break `main` overnight.
 - **Same job, not new jobs.** Lint and scan belong in `plan`, the required check (tf-06). Put
-  them before the plan step: a failing gate costs seconds, not a full plan.
+  them after the module tests and before `azure/login`: a failing gate costs seconds, not a full
+  plan, and third-party tools (a downloaded ruleset, an install script) never run with a
+  logged-in Azure session.

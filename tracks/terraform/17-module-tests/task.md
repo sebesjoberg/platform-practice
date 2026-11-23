@@ -23,14 +23,17 @@ without Azure credentials.
     `expect_failures = [var.address_space]`
 - [ ] `terraform test` passes locally in `terraform/modules/spoke`.
 - [ ] The workflow's `plan` job runs `terraform test` for the module (after
-      `terraform init -backend=false`), so a failing test fails the pull request. Keep exactly
-      the two jobs `plan` and `apply`.
+      `terraform init -backend=false`), so a failing test fails the pull request. The step comes
+      before `azure/login`: move the login down to just above the plan step, so nothing but
+      Terraform's own plan runs with an Azure session. Keep exactly the two jobs `plan` and
+      `apply`.
 - [ ] Ship it as a PR: the plan job shows the tests passing, both env stacks plan
       `No changes.` Merge it.
 
 ## Done when
 
 `./lab.sh grade` passes: the tests mock azurerm and only plan, one of them expects a validation
-failure, the plan job runs them, and the latest pull request run is green.
+failure, the plan job runs them before logging in to Azure, and the latest pull request run is
+green.
 
 Target: 20 minutes.

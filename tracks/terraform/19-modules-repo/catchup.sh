@@ -3,7 +3,8 @@
 #   CATCHUP_PHASE=before-replace (only when MODULES_DIR is not yet a clone): create the public
 #     modules repo if it is missing, clone it to MODULES_DIR and make sure main has a commit on
 #     origin (catchup needs a local main and origin/main to replace). Same pattern as tf-01.
-#   CATCHUP_PHASE=after-push: tag v1.0.0 at tf-19's reference module and push it. tf-05's hook
+#   CATCHUP_PHASE=after-push: tag v1.0.0 at tf-19's reference module and push it (a learner's
+#     own v1.0.0 is moved only after a warning; see lib/modules-tag.sh). tf-05's hook
 #     does this earlier when the tree pins v1 (its pipeline run needs the tag), so here it is
 #     normally a no-op.
 # Idempotent.
@@ -14,7 +15,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "${CATCHUP_PHASE:-}" == after-push ]]; then
   # shellcheck source=/dev/null
   source "$here/../lib/modules-tag.sh"
-  modules_tag v1.0.0 tf-19
+  modules_tag v1.0.0
   exit 0
 fi
 

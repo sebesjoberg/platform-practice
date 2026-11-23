@@ -23,9 +23,11 @@ Traps:
 - **`init` first.** `terraform test` needs the provider downloaded (`terraform init
   -backend=false` in the module directory). With only `>= 4.81` and no `< 5.0`, init picks
   azurerm 5.x and the module stops validating; see tf-16.
-- **Where the step goes.** A step in the `plan` job, after `terraform fmt`. Not a new job: `plan`
-  is the required check (tf-06), and an extra job could fail while `plan` is skipped. A failed
-  test stops the job before the plan step, so that PR gets no plan comment until the test passes.
+- **Where the step goes.** A step in the `plan` job, after `terraform fmt` and *before*
+  `azure/login`: move the login step down to just above the plan step. Tests need no Azure, and
+  nothing but Terraform itself should run with a logged-in session. Not a new job: `plan` is the
+  required check (tf-06), and an extra job could fail while `plan` is skipped. A failed test
+  stops the job before the plan step, so that PR gets no plan comment until the test passes.
 - **Find the tests, don't hard-code them:** loop over the directories that contain a
   `tests/*.tftest.hcl`, and let the step pass when there is no `terraform/modules` at all (it
   goes away in tf-19).

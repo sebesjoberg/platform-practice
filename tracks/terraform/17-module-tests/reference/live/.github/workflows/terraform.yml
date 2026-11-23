@@ -55,11 +55,6 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: terraform fmt
         run: terraform fmt -check -recursive -diff terraform
       # tf-17: module tests run here, in the required plan job, not in a job of their own.
@@ -73,6 +68,13 @@ jobs:
             terraform -chdir="$d" test
             echo "::endgroup::"
           done
+      # Log in to Azure only now: the steps above (formatting, tests, linters, scanners) never
+      # run with an authenticated session.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: terraform init, validate, plan
         id: plan
         env:

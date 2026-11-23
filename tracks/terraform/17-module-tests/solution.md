@@ -91,7 +91,8 @@ run "rejects_an_unknown_env" {
 }
 ```
 
-`.github/workflows/terraform.yml`, a new step in the `plan` job right after `terraform fmt`:
+`.github/workflows/terraform.yml`: in the `plan` job, move `terraform fmt` and the new step
+above `azure/login` (the login moves down to just before `terraform init, validate, plan`):
 
 ```yaml
       - name: terraform test (modules)
