@@ -1,0 +1,6 @@
+---
+# The rolling update of an-11, now with automatic rollback (an-18): deploy.yml drains, deploys,
+# health-gates and rejoins one server at a time, and rolls a server back when the release fails.
+#   ansible-playbook rolling.yml        # same as ansible-playbook deploy.yml
+- name: Rolling update with automatic rollback
+  ansible.builtin.import_playbook: deploy.yml

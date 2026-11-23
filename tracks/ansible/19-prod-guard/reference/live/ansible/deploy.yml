@@ -1,0 +1,77 @@
+---
+# Deploy the app with automatic rollback, one web server at a time (an-18):
+#   ansible-playbook deploy.yml                          # the release in group_vars/role_web.yml
+#   ansible-playbook deploy.yml -e app_version=broken    # a one-off: it fails and rolls back
+# Per server: drain it in HAProxy, remember the release that runs now, deploy. If the new release
+# doesn't get healthy (role acme_hello's health gate fails), switch current back to the previous
+# release, wait until that is healthy again, and fail the run, so the next server is never
+# touched. Whatever happened, the server goes back into the pool and HAProxy must report it UP.
+# Prod hosts are refused unless the run says -e confirm_prod=true (guard.yml, an-19).
+- name: Guard against accidental prod runs
+  ansible.builtin.import_playbook: guard.yml
+
+- name: Deploy the app with automatic rollback
+  hosts: role_web
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    deploy_lb_host: "{{ groups['role_jump'] | first }}"
+    deploy_lb_socket: /run/haproxy/admin.sock
+    deploy_lb_backend: web
+  tasks:
+    - name: Find the release that runs now
+      ansible.builtin.stat:
+        path: /opt/acme-hello/current
+      register: deploy_current
+
+    # current -> releases/<version> (an-09): the previous release is still on disk, so a rollback
+    # is a symlink switch and a restart.
+    - name: Remember it
+      ansible.builtin.set_fact:
+        deploy_previous: "{{ (deploy_current.stat.lnk_target | basename) if (deploy_current.stat.islnk | default(false)) else '' }}"
+
+    - name: Deploy, and roll back if the release isn't healthy
+      block:
+        - name: Drain this server in HAProxy and wait until its connections are gone
+          community.general.haproxy:
+            state: disabled
+            drain: true
+            wait: true
+            wait_interval: 2
+            wait_retries: 30
+            host: "{{ inventory_hostname }}"
+            backend: "{{ deploy_lb_backend }}"
+            socket: "{{ deploy_lb_socket }}"
+          delegate_to: "{{ deploy_lb_host }}"
+
+        - name: Deploy the release (the role waits for /health = ok <version>)
+          ansible.builtin.include_role:
+            name: acme.platform.acme_hello
+
+      rescue:
+        - name: Roll back to the release that ran before
+          ansible.builtin.include_role:
+            name: acme.platform.acme_hello
+          vars:
+            acme_hello_version: "{{ deploy_previous }}"
+          when: deploy_previous | length > 0 and deploy_previous != acme_hello_version
+
+        - name: Fail the deploy (the next server stays untouched)
+          ansible.builtin.fail:
+            msg: >-
+              Release {{ acme_hello_version }} failed on {{ inventory_hostname }}
+              ({{ ansible_failed_task.name | default('a task') }}); rolled back to
+              {{ deploy_previous if deploy_previous | length > 0 else 'nothing (no release ran before)' }}.
+
+      always:
+        - name: Put this server back into the pool and wait until HAProxy reports it UP
+          community.general.haproxy:
+            state: enabled
+            wait: true
+            wait_interval: 2
+            wait_retries: 30
+            host: "{{ inventory_hostname }}"
+            backend: "{{ deploy_lb_backend }}"
+            socket: "{{ deploy_lb_socket }}"
+          delegate_to: "{{ deploy_lb_host }}"

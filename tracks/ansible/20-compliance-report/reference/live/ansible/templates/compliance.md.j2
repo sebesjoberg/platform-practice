@@ -1,0 +1,22 @@
+# Compliance report
+
+Generated {{ compliance_report.generated }} by `compliance.yml` ({{ compliance_report.hosts | length }} host(s)).
+Rules: sshd refuses root and passwords; our own service acme-hello rated below 5.0 by
+`systemd-analyze security` (the distribution's units are listed for information); the TLS
+certificate valid for 30 more days.
+
+| Host | Env | sshd: root login / passwords / max tries | Services (exposure) | TLS valid until | Verdict |
+|---|---|---|---|---|---|
+{% for host, d in compliance_report.hosts | dictsort %}
+{%   set ssh_ok = d.sshd.permitrootlogin | default('') == 'no' and d.sshd.passwordauthentication | default('') == 'no' %}
+{%   set units_bad = d.units | dict2items | selectattr('key', 'eq', 'acme-hello.service') | selectattr('value', 'ge', 5.0) | map(attribute='key') | list %}
+{%   set tls_ok = d.tls_valid_30_days is none or d.tls_valid_30_days %}
+| {{ host }} | {{ d.env }} | {{ d.sshd.permitrootlogin | default('?') }} / {{ d.sshd.passwordauthentication | default('?') }} / {{ d.sshd.maxauthtries | default('?') }} | {% for u, s in d.units | dictsort %}{{ u | regex_replace('\.service$', '') }} {{ s }}{{ ', ' if not loop.last else '' }}{% endfor %} | {{ d.tls_not_after or 'n/a' }} | {{ 'ok' if ssh_ok and not units_bad and tls_ok else 'FINDINGS: ' ~ ((['sshd'] if not ssh_ok else []) + units_bad + ([] if tls_ok else ['tls'])) | join(', ') }} |
+{% endfor %}
+
+## Package versions
+
+{% for host, d in compliance_report.hosts | dictsort %}
+- **{{ host }}**: {% for p, v in d.packages | dictsort %}{{ p }} {{ v }}{{ ', ' if not loop.last else '' }}{% endfor %}
+
+{% endfor %}

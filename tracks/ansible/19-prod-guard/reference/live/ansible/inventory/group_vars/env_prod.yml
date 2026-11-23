@@ -1,0 +1,6 @@
+---
+# What differs per environment lives in env_<name>.yml, next to the env_<name> group the inventory
+# builds from the env tag. Prod: its own vault (tf-24) and quieter logs.
+acme_env: prod
+acme_kv_url: https://kv-{{PREFIX}}-prod-{{SUFFIX}}.vault.azure.net
+acme_log_level: info

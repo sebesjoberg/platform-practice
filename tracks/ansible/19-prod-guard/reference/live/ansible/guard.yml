@@ -1,0 +1,18 @@
+---
+# Guard against accidental prod runs (an-19), imported first by site.yml and deploy.yml. A run
+# whose hosts include env_prod stops here, before Ansible connects to anything (no facts, no
+# modules: assert runs on the control node), unless it says so with -e confirm_prod=true, which
+# only CI's approved prod job does. Dev runs leave prod out: --limit env_dev:env_hub.
+- name: Refuse prod hosts without -e confirm_prod=true
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: A run that includes prod hosts must say -e confirm_prod=true
+      ansible.builtin.assert:
+        that: confirm_prod | default(false) | bool
+        fail_msg: >-
+          {{ inventory_hostname }} is in env_prod: runs against prod need -e confirm_prod=true (CI's
+          approved prod job). For dev only, add --limit env_dev:env_hub.
+        quiet: true
+      when: "'env_prod' in group_names"

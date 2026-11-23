@@ -1,0 +1,14 @@
+---
+# Connection profile for CI on the self-hosted runner (an-16):
+#   ansible-playbook site.yml -e @ci/runner.yml -e acme_kv_auth_source=msi
+# The runner is the jump host itself. It reaches every VM by private IP (the NSG keeps the jump
+# host's public IP closed to the jump host too), with no jump hop, and logs in as ops with
+# gh-runner's own key (role gh_runner made it on the jump host, role base authorized it). It has
+# no ~/.ssh/<prefix>_lab.pub: the lab key's public half comes from the repo variable
+# SSH_PUBLIC_KEY, so role base authorizes exactly the same keys as from your machine.
+# Extra variables beat the inventory, and they are templated per host.
+ansible_host: "{{ private_ipv4_addresses | first }}"
+ansible_user: ops
+ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+acme_ssh_via_jump: false
+acme_lab_pubkey: "{{ lookup('ansible.builtin.env', 'SSH_PUBLIC_KEY') }}"

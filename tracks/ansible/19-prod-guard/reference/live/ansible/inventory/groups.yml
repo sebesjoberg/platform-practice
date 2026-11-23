@@ -1,0 +1,7 @@
+---
+# Groups that exist even when no VM carries their tag yet. The prod web VMs would join env_prod
+# (and role_web) from the Azure inventory the moment they exist; until then env_prod is empty, and
+# plays, --limit and CI's prod job can still name it without an error.
+all:
+  children:
+    env_prod:

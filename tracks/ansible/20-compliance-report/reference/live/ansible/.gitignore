@@ -1,0 +1,15 @@
+# Local Python environment, rebuilt from requirements.txt
+.venv/
+
+# Installed collections, rebuilt from collections/requirements.yml
+collections/ansible_collections/
+
+# ansible-lint / ansible-compat cache, retry files
+.ansible/
+*.retry
+
+# Fact cache (ansible.cfg fact_caching_connection): per machine, never shared
+.facts/
+
+# Reports written by playbooks (compliance.yml, an-20): CI uploads them as artifacts
+reports/

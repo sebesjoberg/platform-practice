@@ -1,0 +1,191 @@
+name: ansible
+
+# Ansible CI (an-16). Lint and Molecule run on GitHub-hosted runners (containers; never on the
+# 1 GiB jump host). Everything that talks to the fleet runs on the self-hosted runner on
+# vm-<prefix>-jump (labels self-hosted, acme-jump): it reaches the VMs privately (ci/runner.yml)
+# and logs in to Azure with the VM's managed identity. No secrets anywhere.
+#   pull_request        lint, molecule, and site.yml --check --diff against the fleet
+#   push to main        apply (site.yml)
+#   schedule            drift check: opens or updates an issue labelled ansible-drift
+#   workflow_dispatch   env: dev; task: apply (the default, what ./lab.sh resume asks for) or drift
+# Runner jobs never run for pull requests from forks (their code would run on the jump host with
+# root on the fleet); the repo also makes outside contributors' fork PRs wait for approval (an-15).
+on:
+  pull_request:
+    paths:
+      - "ansible/**"
+      - ".github/workflows/ansible.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ansible/**"
+      - ".github/workflows/ansible.yml"
+  schedule:
+    - cron: "41 5 * * 1-5" # drift check, weekdays 05:41 UTC
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        type: choice
+        options: [dev]
+        default: dev
+      task:
+        description: What to run
+        type: choice
+        options: [apply, drift]
+        default: apply
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Toolchain (the pinned versions)
+        working-directory: ansible
+        run: |
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r collections/requirements.yml -p collections
+      - name: yamllint
+        working-directory: ansible
+        run: yamllint --strict -c .yamllint .
+      - name: ansible-lint
+        working-directory: ansible
+        run: ansible-lint
+
+  molecule:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [base, app_env, acme_hello, nginx, haproxy, gh_runner]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Toolchain (the pinned versions)
+        working-directory: ansible
+        run: |
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r collections/requirements.yml -p collections
+      - name: molecule test
+        working-directory: ansible/collections_src/ansible_collections/acme/platform/roles/${{ matrix.role }}
+        env:
+          PY_COLORS: "0"
+          ANSIBLE_NOCOLOR: "1"
+        run: molecule test
+
+  check:
+    # Only same-repo pull requests reach the runner.
+    if: github.event_name == 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, acme-jump]
+    env:
+      ANSIBLE_AZURE_AUTH_SOURCE: msi # the inventory, with the VM's managed identity
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+      ANSIBLE_NOCOLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Ansible toolchain (cached on the runner)
+        run: bash ansible/bin/ci-toolchain.sh
+      - name: site.yml --check --diff (what this change would do to the fleet)
+        working-directory: ansible
+        run: ansible-playbook site.yml --check --diff -e @ci/runner.yml -e acme_kv_auth_source=msi
+
+  apply:
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.task == 'apply' && inputs.env == 'dev')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, acme-jump]
+    env:
+      ANSIBLE_AZURE_AUTH_SOURCE: msi
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+      ANSIBLE_NOCOLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Ansible toolchain (cached on the runner)
+        run: bash ansible/bin/ci-toolchain.sh
+      - name: site.yml
+        working-directory: ansible
+        run: ansible-playbook site.yml -e @ci/runner.yml -e acme_kv_auth_source=msi
+
+  drift:
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.task == 'drift')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, acme-jump]
+    permissions:
+      contents: read
+      issues: write # open, comment on and close the drift issue
+    env:
+      ANSIBLE_AZURE_AUTH_SOURCE: msi
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+      ANSIBLE_NOCOLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Ansible toolchain (cached on the runner)
+        run: bash ansible/bin/ci-toolchain.sh
+      - name: Drift check (site.yml --check --diff)
+        id: drift
+        working-directory: ansible
+        run: |
+          # bin/drift-check.sh: 0 = no drift, 2 = drift, anything else = the check failed.
+          rc=0
+          bin/drift-check.sh -e @ci/runner.yml -e acme_kv_auth_source=msi >"$RUNNER_TEMP/drift.log" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/drift.log"
+          echo "rc=$rc" >>"$GITHUB_OUTPUT"
+          # The issue body: the changed tasks with their diffs, cut to a readable size.
+          {
+            echo "Run [${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on ${GITHUB_SHA::7}: the fleet differs from main (\`site.yml --check --diff\`)."
+            echo
+            echo '```'
+            grep -E '^(TASK |changed: |--- |\+\+\+ |[-+][^-+]|PLAY RECAP|vm-)' "$RUNNER_TEMP/drift.log" | head -c 6000 || true
+            echo
+            echo '```'
+          } >"$RUNNER_TEMP/drift.md"
+      - name: Open or update the drift issue
+        if: steps.drift.outputs.rc == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ansible-drift --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "The fleet differs from main (ansible.yml drift check)" --force
+          n="$(gh issue list --repo "$GITHUB_REPOSITORY" --label ansible-drift --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/drift.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label ansible-drift \
+              --title "Ansible drift detected" --body-file "$RUNNER_TEMP/drift.md"
+          fi
+      - name: Close the drift issue
+        if: steps.drift.outputs.rc == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --repo "$GITHUB_REPOSITORY" --label ansible-drift --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "Run ${GITHUB_RUN_ID}: the fleet matches main again."
+          done
+      - name: Fail on drift or errors
+        if: steps.drift.outputs.rc != '0'
+        env:
+          RC: ${{ steps.drift.outputs.rc }}
+        run: |
+          if [ "$RC" = 2 ]; then echo "::error::drift: the fleet differs from main (see the issue labelled ansible-drift)"; fi
+          if [ "$RC" != 2 ]; then echo "::error::the drift check itself failed (exit $RC)"; fi
+          exit 1

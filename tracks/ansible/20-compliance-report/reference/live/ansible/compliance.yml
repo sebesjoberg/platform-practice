@@ -1,0 +1,114 @@
+---
+# Compliance report (an-20): what the fleet really runs, read from the hosts, written to
+# reports/compliance.json (for machines) and reports/compliance.md (for people). Every task on the
+# hosts only reads, so it needs no prod guard; CI's dev job limits it to env_dev:env_hub and
+# uploads the report as an artifact.
+#   ansible-playbook compliance.yml [--limit env_dev:env_hub]
+- name: Collect compliance data
+  hosts: all
+  become: true
+  gather_facts: true
+  # Every host reports on its own and nothing here depends on another host: no need to wait for
+  # the slowest one at every task.
+  strategy: free
+  vars:
+    compliance_packages: [openssh-server, openssl, sudo, chrony, unattended-upgrades, nginx, haproxy, python3]
+    compliance_sshd_keys: [permitrootlogin, passwordauthentication, kbdinteractiveauthentication, pubkeyauthentication, maxauthtries, x11forwarding]
+    compliance_units: [acme-hello.service, nginx.service, haproxy.service]
+    compliance_cert: /etc/nginx/tls/acme-web.crt
+  tasks:
+    - name: Read the installed packages
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Read the services
+      ansible.builtin.service_facts:
+
+    - name: Read sshd's effective settings
+      ansible.builtin.command: sshd -T
+      register: compliance_sshd
+      changed_when: false
+
+    - name: Rate the services' sandboxing (systemd-analyze security)
+      ansible.builtin.command: systemd-analyze security --no-pager {{ item }}
+      loop: "{{ compliance_units | select('in', ansible_facts.services) | list }}"
+      register: compliance_security
+      changed_when: false
+
+    - name: Look for the TLS certificate
+      ansible.builtin.stat:
+        path: "{{ compliance_cert }}"
+      register: compliance_cert_stat
+
+    - name: Read the certificate's expiry date
+      ansible.builtin.command: openssl x509 -enddate -noout -in {{ compliance_cert }}
+      register: compliance_cert_end
+      changed_when: false
+      when: compliance_cert_stat.stat.exists
+
+    # Exit 0: still valid in 30 days, 1: it expires before.
+    - name: Check that the certificate is valid for 30 more days
+      ansible.builtin.command: openssl x509 -checkend 2592000 -noout -in {{ compliance_cert }}
+      register: compliance_cert_30d
+      changed_when: false
+      failed_when: compliance_cert_30d.rc not in [0, 1]
+      when: compliance_cert_stat.stat.exists
+
+    - name: Put this host's data together
+      ansible.builtin.set_fact:
+        compliance_host:
+          env: "{{ acme_env | default('unknown') }}"
+          os: "{{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+          kernel: "{{ ansible_facts.kernel }}"
+          packages: >-
+            {{ dict(compliance_installed | zip(compliance_installed | map('extract', ansible_facts.packages)
+            | map('first') | map(attribute='version'))) }}
+          sshd: >-
+            {{ dict(compliance_sshd_lines | map('regex_replace', ' .*$', '')
+            | zip(compliance_sshd_lines | map('regex_replace', '^[^ ]+ ', ''))) }}
+          units: >-
+            {{ dict(compliance_security.results | map(attribute='item')
+            | zip(compliance_security.results | map(attribute='stdout')
+            | map('regex_search', 'exposure level for [^:]+: ([0-9.]+)', '\\1') | map('first') | map('float'))) }}
+          tls_not_after: "{{ compliance_cert_end.stdout | default('') | regex_replace('^notAfter=', '') }}"
+          tls_valid_30_days: "{{ (compliance_cert_30d.rc == 0) if compliance_cert_stat.stat.exists else none }}"
+      vars:
+        compliance_installed: "{{ compliance_packages | select('in', ansible_facts.packages) | list }}"
+        compliance_sshd_lines: "{{ compliance_sshd.stdout_lines | select('match', '^(' ~ (compliance_sshd_keys | join('|')) ~ ') ') | list }}"
+
+- name: Write the report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    compliance_dir: "{{ playbook_dir }}/reports"
+    # The hosts that reported in this run (all of them, or those of --limit).
+    compliance_reported: "{{ groups['all'] | map('extract', hostvars) | selectattr('compliance_host', 'defined') | list }}"
+    compliance_report:
+      generated: "{{ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+      hosts: "{{ dict(compliance_reported | map(attribute='inventory_hostname') | zip(compliance_reported | map(attribute='compliance_host'))) }}"
+  tasks:
+    - name: The report needs at least one host
+      ansible.builtin.assert:
+        that: compliance_reported | length > 0
+        fail_msg: no host reported (unreachable, or a --limit that matches nothing)
+        quiet: true
+
+    - name: Create the report directory
+      ansible.builtin.file:
+        path: "{{ compliance_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Write reports/compliance.json
+      ansible.builtin.copy:
+        dest: "{{ compliance_dir }}/compliance.json"
+        content: "{{ compliance_report | to_nice_json }}\n"
+        mode: "0644"
+
+    - name: Write reports/compliance.md
+      ansible.builtin.template:
+        src: compliance.md.j2
+        dest: "{{ compliance_dir }}/compliance.md"
+        mode: "0644"
