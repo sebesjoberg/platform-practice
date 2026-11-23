@@ -9,7 +9,9 @@
 #   ./lab.sh selftest [--offline] [track] [--from id] [--to id]
 set -euo pipefail
 
+# Exported: task scripts (e.g. tracks/terraform/lib/modules-tag.sh) source lib/ from here.
 LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LAB_ROOT
 export LAB_HOME="${LAB_HOME:-$HOME/.platform-lab}"
 export TRACKS_DIR="${TRACKS_DIR:-$LAB_ROOT/tracks}"
 

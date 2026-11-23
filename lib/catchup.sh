@@ -225,9 +225,9 @@ _catchup() {
   if [[ $do_mod -eq 1 ]]; then _replace_repo "$MODULES_DIR" "$out/modules" "$id" all "$yes"; fi
   rm -rf "$out"
 
+  # Every replayed task's hook runs after the push, repo-creating ones too (tf-19 tags its
+  # release then); their scripts tell the phases apart with CATCHUP_PHASE.
   for tid in "${ids[@]}"; do
-    kind="$(task_meta "$tid" catchup_creates_repo)"
-    [[ -n "$kind" && "$kind" != false ]] && continue
     _run_hook "$tid" after-push
   done
   echo "caught up to $id"

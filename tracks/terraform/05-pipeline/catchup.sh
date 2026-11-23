@@ -17,6 +17,11 @@ gh variable set AZURE_SUBSCRIPTION_ID -R "$repo" --body "$SUBSCRIPTION_ID"
 if grep -qs 'vars\.BUDGET_EMAIL' .github/workflows/terraform.yml; then
   bash "$(dirname "${BASH_SOURCE[0]}")/../12-budget/catchup.sh"
 fi
+# From tf-19 the env stacks pull the spoke module from the modules repo by tag, and tf-19/tf-20's
+# hooks (which create those tags) run after this one: create the tags the tree pins first.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/modules-tag.sh"
+modules_tag_pinned
 
 runs() { gh run list -R "$repo" --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId'; }
 

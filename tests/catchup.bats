@@ -148,9 +148,16 @@ source_libs() {
   run "$LAB" catchup --yes tf-25
   [ "$status" -eq 0 ]
   run cat "$HOOK_LOG"
-  [ "${lines[0]}" = "tf-02 after-push acme-platform" ]
-  [ "${lines[1]}" = "tf-25 after-push acme-platform" ]
-  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]}" = "tf-01 after-push acme-platform" ]
+  [ "${lines[1]}" = "tf-02 after-push acme-platform" ]
+  [ "${lines[2]}" = "tf-25 after-push acme-platform" ]
+  [ "${#lines[@]}" -eq 3 ]
+}
+
+@test "creates-repo hook also runs after the push" {
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 0 ]
+  grep -qx "tf-01 after-push acme-platform" "$HOOK_LOG"
 }
 
 @test "creates-repo hook skipped when repo exists" {
@@ -209,10 +216,11 @@ source_libs() {
   [ ! -e "$(LIVE)/mine.txt" ]
   [ "$(git -C "$(LIVE)" log -1 --format=%s)" = "catchup: an-01" ]
   run cat "$HOOK_LOG"
-  [ "${lines[0]}" = "tf-02 after-push acme-platform" ]
-  [ "${lines[1]}" = "tf-25 after-push acme-platform" ]
-  [ "${lines[2]}" = "an-01 after-push acme-platform" ]
-  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]}" = "tf-01 after-push acme-platform" ]
+  [ "${lines[1]}" = "tf-02 after-push acme-platform" ]
+  [ "${lines[2]}" = "tf-25 after-push acme-platform" ]
+  [ "${lines[3]}" = "an-01 after-push acme-platform" ]
+  [ "${#lines[@]}" -eq 4 ]
   [ "$(git -C "$TEST_TMP/remote-live.git" branch --list 'my-work/*' | wc -l)" -eq 2 ]
 }
 
@@ -301,4 +309,65 @@ WRAP
   [ "$status" -eq 1 ]
   [ "$(cat "$TEST_TMP/lease.arg")" = "$expected" ]
   git -C "$TEST_TMP/remote-live.git" show main:race.txt
+}
+
+# --- modules repo release tags (tracks/terraform/lib/modules-tag.sh, tf-19/tf-20 catchup) ---
+
+# tag_env: the real terraform track, config exported, MODULES_DIR main = tf-20's modules tree.
+tag_env() {
+  export TRACKS_DIR="$REPO_ROOT/tracks" LAB_ROOT="$REPO_ROOT"
+  set -a
+  # shellcheck disable=SC1091
+  source "$LAB_HOME/config.env"
+  set +a
+  MODS="$TEST_TMP/acme/acme-terraform-modules"
+  (
+    for l in common tasks template catchup; do
+      # shellcheck disable=SC1090
+      source "$REPO_ROOT/lib/$l.sh"
+    done
+    build_reference tf-20 "$TEST_TMP/ref20"
+  )
+  git -C "$MODS" rm -qrf .
+  cp -a "$TEST_TMP/ref20/modules/." "$MODS/"
+  git -C "$MODS" add -A
+  git -C "$MODS" commit -qm "catchup: tf-20"
+  git -C "$MODS" push -q origin main
+}
+
+@test "modules_tag tags each release at its own reference tree" {
+  tag_env
+  run bash -c 'source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag v1.0.0 tf-19 && modules_tag v2.0.0 tf-20'
+  echo "$output"
+  [ "$status" -eq 0 ]
+  git -C "$TEST_TMP/remote-mod.git" show v1.0.0:spoke/variables.tf | grep -q 'variable "address_space"'
+  git -C "$TEST_TMP/remote-mod.git" show v2.0.0:spoke/variables.tf | grep -q 'variable "vnet_cidr"'
+  [ "$(git -C "$TEST_TMP/remote-mod.git" rev-parse 'v2.0.0^{commit}')" = "$(git -C "$TEST_TMP/remote-mod.git" rev-parse main)" ]
+  run bash -c 'source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag v1.0.0 tf-19'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already holds the reference module"* ]]
+}
+
+@test "modules_tag saves and moves a tag with other content" {
+  tag_env
+  git -C "$MODS" tag -a v1.0.0 -m mine HEAD~1
+  git -C "$MODS" push -q origin v1.0.0
+  run bash -c 'source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag v1.0.0 tf-19'
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"saved as branch my-work/tag-v1.0.0-"* ]]
+  git -C "$TEST_TMP/remote-mod.git" show v1.0.0:spoke/variables.tf | grep -q 'variable "address_space"'
+  [ -n "$(git -C "$TEST_TMP/remote-mod.git" branch --list 'my-work/tag-v1.0.0-*')" ]
+}
+
+@test "modules_tag_pinned tags only the majors the live tree pins" {
+  tag_env
+  mkdir -p "$(LIVE)/terraform/env-prod"
+  printf 'module "spoke" {\n  source = "git::https://github.com/learner/acme-terraform-modules.git//spoke?ref=v1.0.0"\n}\n' \
+    >"$(LIVE)/terraform/env-prod/main.tf"
+  run bash -c 'cd "$(dirname "$0")" && source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh" && modules_tag_pinned' "$(LIVE)/x"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v1.0.0
+  ! git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v2.0.0
 }

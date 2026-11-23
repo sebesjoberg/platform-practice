@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# tf-01 catchup (CATCHUP_PHASE=before-replace, only when LIVE_DIR is not yet a clone):
+# tf-01 catchup (CATCHUP_PHASE=before-replace, only when LIVE_DIR is not yet a clone; a no-op after-push):
 # create the public live repo if it is missing, clone it to LIVE_DIR and make sure main has a
 # commit on origin (catchup needs a local main and origin/main to replace).
 set -euo pipefail
+
+# Nothing to do after the push: the repo exists by then.
+[[ "${CATCHUP_PHASE:-}" == after-push ]] && exit 0
 
 repo="$GH_OWNER/$LIVE_REPO"
 
