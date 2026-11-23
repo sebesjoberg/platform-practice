@@ -58,7 +58,8 @@ enable_plugins = azure.azcollection.azure_rm, ansible.builtin.host_list
 
 [ssh_connection]
 # Lab VMs get new host keys on every pause/resume: keys are not recorded.
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR
+# IdentitiesOnly: only the lab key, so an ssh-agent full of keys can't exhaust MaxAuthTries.
+ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR
 ```
 
 ## Commands

@@ -27,6 +27,11 @@ Traps:
   defensible; say so in a comment. A long-lived fleet pins host keys or uses SSH host certificates.
 - **`ssh_args` replaces Ansible's defaults**, including `ControlMaster`/`ControlPersist`. Put them
   back when you set it, or every task opens a new SSH connection (twice, for the web VMs).
+- **Add `-o IdentitiesOnly=yes` to `ssh_args`** (and to the inner ProxyCommand ssh). Without it,
+  ssh offers every key in your ssh-agent before the lab key; once an-03 sets `MaxAuthTries 3`, an
+  agent with three or more keys gets every VM to reject Ansible after the first run.
+- **The jump host's IP must not be in any file**, not even a `jump_host_ip: 20.x.x.x` in another
+  group_vars file: the grader looks for the real IP under `ansible/`.
 - **Which subscription?** The plugin uses the `az` CLI's current subscription:
   `az account show` must print the lab subscription.
 - **An empty inventory is not an error.** `ansible all -m ping` with no hosts exits 0 with a

@@ -20,6 +20,9 @@ Traps:
 - **Idempotence killers:** `apt` with `update_cache: true` but no `cache_valid_time` (changed on
   every run); `command`/`shell` without `changed_when`; `user` with a plaintext `password`;
   templates with a timestamp in them.
+- **The dpkg lock on a fresh VM.** Right after boot (tf-25, `./lab.sh resume`) `apt-daily` holds
+  the dpkg lock for minutes and `apt` fails after its default 60 s wait. Give the apt task
+  `lock_timeout: 600`.
 - **`authorized_key` with a list:** `key:` takes one string; join the list with newlines and set
   `exclusive: true`, or a second run (or a removed key) leaves stale keys behind.
 - **The ops key in the inventory:** `lookup('ansible.builtin.file', '~/.ssh/{{PREFIX}}_lab.pub')`

@@ -16,18 +16,29 @@ an03_ops_user() {
 an03_updates_time() {
   an_on_all 'eval "$(apt-config shell UU APT::Periodic::Unattended-Upgrade)" && [ "$UU" = 1 ] && systemctl is-active -q chrony && [ "$(timedatectl show -p Timezone --value)" = Etc/UTC ]'
 }
-export -f an03_sshd_hardened an03_ops_user an03_updates_time
+# an03_site_applies_base <file>: a play for hosts: all applies role base, in any common form:
+# `- role: base`, `- base`, `roles: [base]`, `- { role: base }`, import_role/include_role name: base.
+an03_site_applies_base() {
+  local f=$1
+  [[ -f "$f" ]] || return 1
+  grep -qE "hosts:[[:space:]]*.?all.?[[:space:]]*$" "$f" || return 1
+  grep -qE "^[[:space:]]*-[[:space:]]*.?base.?[[:space:]]*$|role:[[:space:]]*.?base([^[:alnum:]_.-]|$)|roles:[[:space:]]*\[([^]]*[[:space:],])?.?base.?([[:space:],]|\])" "$f" && return 0
+  grep -qE "(import|include)_role:" "$f" && grep -qE "^[[:space:]]*name:[[:space:]]*.?base.?[[:space:]]*$" "$f"
+}
+export -f an03_sshd_hardened an03_ops_user an03_updates_time an03_site_applies_base
 
+# The values themselves are proven live by sshd -T below, so any template style passes here
+# (literal lines or a data-driven loop over a dict of options).
 check_code "role base hardens sshd with a drop-in in sshd_config.d, validated by sshd -t, reloaded by a handler" \
-  'r=ansible/roles/base && grep -rqE "/etc/ssh/sshd_config\.d/[^[:space:]\"]+\.conf" "$r/tasks" && grep -rqE "validate:[[:space:]]*.?(/usr/sbin/)?sshd -t -f %s" "$r/tasks" && grep -rqE "notify:" "$r/tasks" && compgen -G "$r/handlers/main.y*ml" >/dev/null && grep -rqiE "^[[:space:]]*PermitRootLogin[[:space:]]+no" "$r" && grep -rqiE "^[[:space:]]*PasswordAuthentication[[:space:]]+no" "$r"' \
-  "ansible/roles/base: a template/copy task writing /etc/ssh/sshd_config.d/<name>.conf (PermitRootLogin no, PasswordAuthentication no) with validate: /usr/sbin/sshd -t -f %s and notify, plus the handler in roles/base/handlers/main.yml"
+  'r=ansible/roles/base && grep -rqE "/etc/ssh/sshd_config\.d/[^[:space:]\"]+\.conf" "$r/tasks" && grep -rqE "validate:[[:space:]]*.?(/usr/sbin/)?sshd -t -f %s" "$r/tasks" && grep -rqE "notify:" "$r/tasks" && compgen -G "$r/handlers/main.y*ml" >/dev/null' \
+  "ansible/roles/base: a template/copy task writing /etc/ssh/sshd_config.d/<name>.conf with validate: /usr/sbin/sshd -t -f %s and notify, plus the handler in roles/base/handlers/main.yml"
 
 check_code "role base: ops user from base_ops_user, unattended-upgrades, chrony, timezone" \
   'r=ansible/roles/base && grep -qsE "^base_ops_user:[[:space:]]*.?ops.?[[:space:]]*$" "$r"/defaults/main.y*ml && grep -rqE "unattended-upgrades" "$r" && grep -rqE "chrony" "$r" && grep -rqE "timezone" "$r/tasks"' \
   "ansible/roles/base needs the default base_ops_user: ops, and tasks for the ops user, unattended-upgrades, chrony and the timezone"
 
 check_code "ansible/site.yml applies role base to all hosts" \
-  'f=ansible/site.yml && grep -qE "hosts:[[:space:]]*.?all.?[[:space:]]*$" "$f" && grep -qE "^[[:space:]]*-?[[:space:]]*(role:[[:space:]]*)?.?base.?[[:space:]]*$" "$f"' \
+  'an03_site_applies_base ansible/site.yml' \
   "write ansible/site.yml: a play with hosts: all and become: true that applies the role base"
 
 check "sshd on every VM: passwordauthentication no, permitrootlogin no (sshd -T)" \

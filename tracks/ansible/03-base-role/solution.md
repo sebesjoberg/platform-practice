@@ -85,7 +85,8 @@ ClientAliveCountMax 2
 ```
 
 `tasks/main.yml` installs `base_packages` (`openssh-server`, `sudo`, `unattended-upgrades`,
-`chrony`, `tzdata`) with `update_cache: true` and `cache_valid_time: 3600`, then imports the four
+`chrony`, `tzdata`) with `update_cache: true`, `cache_valid_time: 3600` and `lock_timeout: 600`
+(apt-daily holds the dpkg lock on a freshly booted VM), then imports the four
 files. `tasks/updates.yml` templates `/etc/apt/apt.conf.d/20auto-upgrades`
 (`APT::Periodic::Update-Package-Lists "1"; APT::Periodic::Unattended-Upgrade "1";`) and
 `52unattended-upgrades-local` (`Automatic-Reboot` from `base_unattended_upgrades_reboot`).

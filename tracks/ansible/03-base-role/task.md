@@ -1,7 +1,7 @@
 ---
 id: an-03
 title: The base role
-target_minutes: 20
+target_minutes: 25
 requires: [tf-25, an-02]
 ---
 # an-03 The base role
@@ -35,4 +35,4 @@ to run again at any time: a run that changes nothing must say so.
 `ansible-playbook site.yml` ends with `changed=0` for all three VMs, and `./lab.sh grade` passes
 (it runs `site.yml` once more and reads the PLAY RECAP).
 
-Target: 20 minutes.
+Target: 25 minutes.
