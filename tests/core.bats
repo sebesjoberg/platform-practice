@@ -181,3 +181,30 @@ fake_azure() {
   [[ "$output" == *"# Body line"* ]]
   [[ "$output" != *"title:"* ]]
 }
+
+@test "task output renders PREFIX token" {
+  mkdir -p "$TEST_TMP/tpl/demo/01-x"
+  printf -- '---\nid: tpl-01\ntitle: Tpl\ntarget_minutes: 5\nrequires: []\n---\nCreate `rg-{{PREFIX}}-hub` in {{LOCATION}}; keep {{NOT_A_TOKEN}}.\n' \
+    >"$TEST_TMP/tpl/demo/01-x/task.md"
+  printf 'See st{{PREFIX}}tfstate{{SUFFIX}}.\n' >"$TEST_TMP/tpl/demo/01-x/hint.md"
+  export TRACKS_DIR="$TEST_TMP/tpl"
+  run "$LAB" task tpl-01
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'`rg-acme-hub` in swedencentral'* ]]
+  [[ "$output" == *'{{NOT_A_TOKEN}}'* ]]
+  run "$LAB" hint tpl-01
+  [[ "$output" == *"stacmetfstateabc123"* ]]
+  run "$LAB" next demo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'`rg-acme-hub`'* ]]
+}
+
+@test "task output is unrendered without config" {
+  mkdir -p "$TEST_TMP/tpl/demo/01-x"
+  printf -- '---\nid: tpl-01\ntitle: Tpl\ntarget_minutes: 5\nrequires: []\n---\nCreate `rg-{{PREFIX}}-hub`.\n' \
+    >"$TEST_TMP/tpl/demo/01-x/task.md"
+  rm "$LAB_HOME/config.env"
+  TRACKS_DIR="$TEST_TMP/tpl" run "$LAB" task tpl-01
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'`rg-{{PREFIX}}-hub`'* ]]
+}

@@ -61,6 +61,19 @@ print_body() {
   awk '{ sub(/\r$/, "") } NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$1"
 }
 
+# show_md <file>: print_body, with template tokens rendered from the learner's config when one
+# exists (unrendered otherwise). Needs lib/config.sh and lib/template.sh.
+show_md() {
+  if [[ -f "$LAB_HOME/config.env" ]]; then
+    (
+      load_config
+      print_body "$1" | render_text
+    )
+  else
+    print_body "$1"
+  fi
+}
+
 resolve_id() { # resolve_id [id]: the given id or the current task
   local id="${1:-$(current_task)}"
   [[ -n "$id" ]] || die 1 "no current task; run ./lab.sh next"
@@ -73,7 +86,7 @@ cmd_show() { # cmd_show <file> [id]
   id="$(resolve_id "${2:-}")"
   d="$(task_dir "$id")"
   [[ -f "$d/$file" ]] || die 1 "$id has no $file"
-  print_body "$d/$file"
+  show_md "$d/$file"
 }
 
 cmd_next() {
@@ -92,7 +105,7 @@ cmd_next() {
     if [[ -f "$d/setup.sh" ]]; then
       bash "$d/setup.sh" || die 1 "setup for $id failed"
     fi
-    print_body "$d/task.md"
+    show_md "$d/task.md"
     echo
     echo "target: $(task_meta "$id" target_minutes) min"
     progress_start "$id"
