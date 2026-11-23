@@ -1,8 +1,17 @@
 # Allow-list for `trivy config --severity HIGH,CRITICAL` in tests/validate-reference.sh.
 # Every entry needs a statement (the reason). Format:
 #   misconfigurations:
-#     - id: AVD-AZU-0013
+#     - id: AZU-0013
 #       paths:
-#         - "terraform/shared/main.tf"
+#         - "keyvault.tf"
 #       statement: "why this is acceptable for a practice lab"
-misconfigurations: []
+# Paths are relative to the stack directory trivy scans (validate-reference runs it per stack).
+misconfigurations:
+  - id: AZU-0012
+    paths:
+      - "state.tf"
+    statement: >-
+      Terraform state account (bootstrap) keeps its public endpoint with default action Allow:
+      GitHub-hosted runners and the learner's WSL have no fixed IPs and there is no private
+      runner before tf-25. Access is Entra ID only (shared keys disabled, no anonymous blob
+      access, TLS 1.2), so network rules would add cost/complexity, not protection, in the lab.

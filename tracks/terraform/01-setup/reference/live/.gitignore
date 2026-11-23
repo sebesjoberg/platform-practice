@@ -1,0 +1,19 @@
+# Terraform working directories (any depth)
+.terraform/
+
+# State and state backups never go to Git
+*.tfstate
+*.tfstate.*
+
+# Variable files may hold secrets; commit *.auto.tfvars.example instead
+*.tfvars
+*.tfvars.json
+
+# Crash logs, plan files and CLI override files
+crash.log
+crash.*.log
+*.tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
