@@ -109,7 +109,7 @@
     {
       "id": 13,
       "subject": "Task 13: Ansible phase B — Services (an-06…an-10)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Tasks an-06 to an-10 per the spec's Phase B.\n\n**Files:**\n- Create: `tracks/ansible/06-nginx/` … `tracks/ansible/10-haproxy/`\n\n**Acceptance Criteria:**\n- [ ] an-07: a secret `app-greeting` in `kv-{P}-dev-{S}` (created by the task's `setup.sh` with a random value, and by `catchup.sh`) ends up in `/etc/acme/app.env` on the web VMs. Check: `git grep` over the learner repo for the value is empty.\n- [ ] an-08: certificate `web-tls` (self-signed, Key Vault policy) is served on 443. Check: `openssl s_client` through the jump host returns that cert's thumbprint.\n- [ ] an-09: app `acme-hello` (tiny Python http.server-based app shipped in the role's `files/`, version in `app_version` var) runs as systemd unit `acme-hello.service`, with a `/health` endpoint returning `ok <version>`.\n- [ ] an-10: HAProxy on the jump VM, frontend :80 → backend `web` with both web VMs. Admin socket at `/run/haproxy/admin.sock` (used in an-11). Check: 10 requests through the jump IP hit both backends (the response contains the hostname).\n- [ ] Phase gate passes.\n\n**Verify:** `tests/lint-tracks.sh ansible && tests/validate-reference.sh an-10 && ./lab.sh selftest --offline ansible --from an-06 --to an-10` → all pass\n\nFull steps: docs/superpowers/plans/2026-11-23-platform-lab.md (Task 13).\n\n```json:metadata\n{\"files\": [\"tracks/ansible/06-nginx/\", \"tracks/ansible/10-haproxy/\"], \"verifyCommand\": \"tests/lint-tracks.sh ansible && tests/validate-reference.sh an-10 && ./lab.sh selftest --offline ansible --from an-06 --to an-10\", \"acceptanceCriteria\": [\"an-07: a secret `app-greeting` in `kv-{P}-dev-{S}` (created by the task's `setup.sh` with a random value, and by `catchup.sh`) ends up in `/etc/acme/app.env` on the web VMs. Check: `git grep` over the learner repo for the value is empty.\", \"an-08: certificate `web-tls` (self-signed, Key Vault policy) is served on 443. Check: `openssl s_client` through the jump host returns that cert's thumbprint.\", \"an-09: app `acme-hello` (tiny Python http.server-based app shipped in the role's `files/`, version in `app_version` var) runs as systemd unit `acme-hello.service`, with a `/health` endpoint returning `ok <version>`.\", \"an-10: HAProxy on the jump VM, frontend :80 → backend `web` with both web VMs. Admin socket at `/run/haproxy/admin.sock` (used in an-11). Check: 10 requests through the jump IP hit both backends (the response contains the hostname).\", \"Phase gate passes.\"], \"modelTier\": \"frontier\", \"planTask\": 13}\n```",
       "blockedBy": [
         12
@@ -144,5 +144,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-11-23T20:15:03"
+  "lastUpdated": "2026-11-23T21:23:07"
 }
