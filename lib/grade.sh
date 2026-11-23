@@ -18,6 +18,8 @@ grade_task() {
   local id=$1 mode=$2 d rc=0
   d="$(task_dir "$id")"
   [[ -f "$d/checks.sh" ]] || die 1 "$id has no checks.sh"
+  bash -n "$d/checks.sh" 2>/dev/null || die 1 "$id: checks.sh failed to load"
+  bash -n "$d/checks.sh" 2>/dev/null || die 1 "$id: checks.sh failed to load"
   : >"$GRADE_TMP/results"
   (
     export GRADE_RESULTS="$GRADE_TMP/results" GRADE_TMP
@@ -25,7 +27,8 @@ grade_task() {
     # shellcheck disable=SC1091
     source "$LAB_ROOT/lib/checks-api.sh"
     # shellcheck disable=SC1091
-    source "$d/checks.sh"
+    source "$d/checks.sh" || true
+    exit 0
   ) </dev/null || rc=$?
   [[ $rc -eq 0 ]] || exit "$rc"
   GRADE_TOTAL="$(wc -l <"$GRADE_TMP/results" | tr -d ' ')"

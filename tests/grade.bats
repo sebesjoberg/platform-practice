@@ -108,3 +108,37 @@ fake_login() {
 }
 
 progress_has_g08() { grep -q '^g-08' "$LAB_HOME/progress" 2>/dev/null; }
+
+@test "checks.sh ending in a false statement still prints summary" {
+  run "$LAB" grade g-10
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1/1 passed"* ]]
+}
+
+@test "checks.sh with syntax error reports load failure" {
+  run "$LAB" grade g-11
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"g-11: checks.sh failed to load"* ]]
+}
+
+@test "preflight aborts when az is not logged in" {
+  fake_response az "account show --query id -o tsv" 1
+  fake_response gh "auth status" 0
+  run "$LAB" grade g-07
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"az not logged in to the lab subscription"* ]]
+  [[ "$output" != *"PASS"* && "$output" != *"FAIL"* ]]
+}
+
+@test "colour is emitted when forced and suppressed by NO_COLOR" {
+  run env -u NO_COLOR GRADE_FORCE_COLOR=1 bash -c 'source "$1/lib/checks-api.sh"; x="$(_grade_color 32 hi)"; printf %q "$x"' _ "$REPO_ROOT"
+  [[ "$output" == *"\E[32m"* || "$output" == *$'\033'* ]]
+  run env NO_COLOR=1 GRADE_FORCE_COLOR=1 bash -c 'source "$1/lib/checks-api.sh"; x="$(_grade_color 32 hi)"; printf %s "$x"' _ "$REPO_ROOT"
+  [ "$output" = "hi" ]
+}
+
+@test "check fails with reason when LIVE_DIR is unset" {
+  run env -u LIVE_DIR GRADE_RESULTS="$TEST_TMP/res" bash -c 'set -euo pipefail; source "$1/lib/checks-api.sh"; _grade_run n true r; echo after' _ "$REPO_ROOT"
+  [[ "$output" == *"→ LIVE_DIR not set"* ]]
+  [[ "$output" == *"after"* ]]
+}
