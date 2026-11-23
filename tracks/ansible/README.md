@@ -20,23 +20,25 @@ SSH from your IP only) and the web VMs `vm-<prefix>-web-dev-1` / `-2` (private o
 user `azureuser`, your key `~/.ssh/<prefix>_lab`.
 
 - Did the Terraform track up to tf-25? You're set: `./lab.sh next ansible`.
-- Only doing this track? Build that state with `./lab.sh catchup tf-25`, then `./lab.sh grade tf-25`
-  (marks it done, which `next ansible` requires), then `./lab.sh next ansible`.
+- Only doing this track? Build that state with `./lab.sh catchup tf-25` (it marks tf-01 … tf-25
+  done, which `next ansible` requires), then `./lab.sh next ansible`.
 
 The VMs cost money every hour: `./lab.sh pause` when you stop, `./lab.sh resume` when you're back.
 Resume brings the VMs back empty and, from an-07 on, an empty dev Key Vault. `./lab.sh resume`
-waits for the Terraform run, restores the vault contents your tasks need (a new `app-greeting`
-secret, your certificate role and a new `web-tls` certificate) and re-runs `site.yml` from
-`ansible/.venv`. If that last part fails (a playbook error, a run that took too long), redo it by
-hand: `tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory, then
+waits for the Terraform run (approve `apply-prod` when it asks), restores the vault contents your
+tasks need (a new `app-greeting` secret, your certificate role and a new `web-tls` certificate)
+and re-runs `site.yml` from `ansible/.venv`. If that last part fails (a playbook error, a run that
+took too long), the lab stays paused: fix it and run `./lab.sh resume` again, or redo it by hand:
+`tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory, then
 `cd "$LIVE_DIR/ansible" && source .venv/bin/activate && ansible-playbook site.yml`.
 
 **From an-15 on** the jump host is also your self-hosted GitHub runner, and a resumed jump host is
-a new machine: GitHub shows the old runner offline, and the Ansible pipeline (which resume
-dispatches from an-16 on) has nothing to run on. Run `tracks/ansible/lib/runner-register.sh` from
-the lab directory after a resume: it registers the new jump host with a fresh token
+a new machine: GitHub shows the old runner offline. So instead of `site.yml`, resume runs
+`tracks/ansible/lib/runner-register.sh`: it registers the new jump host with a fresh token
 (`runner.yml`), puts back the Key Vault objects, and runs `site.yml`, which authorizes the
-runner's new SSH key on every VM. Queued pipeline runs then start.
+runner's new SSH key on every VM. From an-16 on resume then dispatches the Ansible pipeline
+(`-f env=dev`). If it fails, run the script yourself from the lab directory; queued pipeline runs
+start once the runner is back.
 
 ## Conventions
 
@@ -120,6 +122,10 @@ Later tasks and their checks assume these. Keep them in your own code.
   on drift). Mondays: `compliance` (the artifact `compliance-report`, an-20). `workflow_dispatch`:
   `env` (`dev`, or `prod`: job `apply-prod`, behind the `prod` environment's approval) and `task`
   (`apply`, `drift`, `compliance`). `./lab.sh resume` dispatches `-f env=dev`.
+- **A rebuilt VM configures itself** (the capstone, cap-01). `ansible.yml` also runs `apply` when a
+  `terraform.yml` run on `main` succeeds (`workflow_run`). New web VMs authorize the runner's key
+  (repo variable `RUNNER_SSH_PUBLIC_KEY`, which `runner-register.sh` keeps current) for
+  `azureuser`, and `first-contact.yml` logs in as `azureuser` wherever `ops` doesn't exist yet.
 - **Forks never reach the runner.** Every runner job's `if:` requires a push, a schedule, a
   dispatch or a pull request from this repo itself, and fork pull requests from all outside
   contributors wait for approval (`all_external_contributors`).

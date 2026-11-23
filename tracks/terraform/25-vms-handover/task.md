@@ -90,10 +90,8 @@ relies on, and what you must keep working from now on:
 - **Access.** SSH reaches the jump host from your IP only; everything else goes through it
   (ProxyJump). The jump VM's identity can read the subscription (inventory) and both vaults'
   secrets (Ansible reads secrets with it).
-- **What the Ansible track adds to this code** (in your Terraform repo, through the pipeline):
-  `Key Vault Certificates Officer` for you on the vaults, to import the TLS certificate (an-08),
-  and an inbound rule for TCP 80 from your IP on `nsg-{{PREFIX}}-hub-runner`, when the jump host
-  becomes the load balancer (an-10).
+- **The Ansible track leaves this code alone.** Only the joint capstone (cap-01) changes the
+  Terraform code again.
 - **The jump host has 1 GiB of memory.** It runs HAProxy and, later, a self-hosted GitHub
   runner that only does check/diff/apply runs. Molecule (containers) runs on GitHub-hosted
   runners, never on the jump host.

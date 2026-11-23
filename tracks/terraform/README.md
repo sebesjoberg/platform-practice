@@ -198,7 +198,8 @@ Outbound traffic, everything that leaves the VNets:
 
 Two things the pipeline can't do alone after `./lab.sh pause`: the new registry is empty, so
 `./lab.sh resume` applies `shared` first and imports the app image before the full run; and
-`apply-prod` waits for your approval.
+`apply-prod` waits for your approval. Resume waits until that run has finished, then (from the
+Ansible track on) configures the new VMs again.
 
 **The pause rule:** as soon as VMs exist (phase 3), run `./lab.sh pause` whenever you stop for
 the day, and `./lab.sh resume` when you come back. Pause destroys the expensive stacks
