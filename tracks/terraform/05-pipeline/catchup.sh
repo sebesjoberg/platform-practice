@@ -18,12 +18,12 @@ gh variable set AZURE_SUBSCRIPTION_ID -R "$repo" --body "$SUBSCRIPTION_ID"
 # The run below applies the tree catchup just pushed, which may be a later task's reference, and
 # later tasks' hooks run after this one. So whatever the run needs from them happens here first;
 # their own scripts are the single place that knows how.
-# From tf-12 the workflow needs the repo variable BUDGET_EMAIL.
-if grep -qs 'vars\.BUDGET_EMAIL' "$wf"; then
+# From tf-12 the workflow needs the repo secret BUDGET_EMAIL.
+if grep -qs 'secrets\.BUDGET_EMAIL' "$wf"; then
   bash "$here/../12-budget/catchup.sh"
 fi
-# From tf-25 it needs LEARNER_IP and SSH_PUBLIC_KEY (and the key pair they come from).
-if grep -qsE 'vars\.(LEARNER_IP|SSH_PUBLIC_KEY)' "$wf"; then
+# From tf-25 it needs the secret LEARNER_IP and the variable SSH_PUBLIC_KEY (and the key pair).
+if grep -qsE 'secrets\.LEARNER_IP|vars\.SSH_PUBLIC_KEY' "$wf"; then
   bash "$here/../25-vms-handover/catchup.sh"
 fi
 # From tf-19 the env stacks pull modules from the modules repo by tag, and the hooks of the

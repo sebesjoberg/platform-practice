@@ -27,11 +27,13 @@ env:
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   # Budget alert address (tf-12) for both jobs: plan needs every variable as much as apply.
-  # A repo variable, not a tfvars file: tfvars are gitignored and the repo is public.
-  TF_VAR_budget_email: ${{ vars.BUDGET_EMAIL }}
-  # tf-25: your IP (the only SSH source for the jump VM; sensitive in Terraform, so plans never
-  # show it) and your SSH public key. The private key never leaves your machine.
-  TF_VAR_learner_ip: ${{ vars.LEARNER_IP }}
+  # A repo secret, not a tfvars file (gitignored) or a variable: the repo is public, and GitHub
+  # prints env values in every step log; secrets are masked there.
+  TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
+  # tf-25: your IP (the only SSH source for the jump VM), a secret like BUDGET_EMAIL: masked in the
+  # logs, and `sensitive` in Terraform keeps it out of plans. Your SSH public key is public by
+  # nature, so a variable. The private key never leaves your machine.
+  TF_VAR_learner_ip: ${{ secrets.LEARNER_IP }}
   TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
   # Dependency order for .github/scripts/stacks.sh. Stacks not listed run afterwards, alphabetically.
   STACK_ORDER: "landing-zone shared env-dev env-prod observability teams/payments"

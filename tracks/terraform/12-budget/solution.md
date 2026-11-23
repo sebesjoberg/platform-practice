@@ -2,7 +2,7 @@
 
 ## Approach
 
-The address is the only personal value so far. It lives in a GitHub repo variable and reaches
+The address is the only personal value so far. It lives in a GitHub repo secret (masked in the public run logs, unlike a variable) and reaches
 Terraform through `TF_VAR_budget_email`, set once at workflow level so both jobs see it. In
 Terraform it's a required, sensitive, validated variable. The action group carries the
 receiver; the budget points both alerts at the action group.
@@ -13,20 +13,20 @@ receiver; the budget points both alerts at the action group.
 
 ```yaml
   # Budget alert address (tf-12) for both jobs: plan needs every variable as much as apply.
-  TF_VAR_budget_email: ${{ vars.BUDGET_EMAIL }}
+  TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
 ```
 
 `terraform/landing-zone/variables.tf`:
 
 ```hcl
 variable "budget_email" {
-  description = "Recipient of the budget alerts. CI sets it from the GitHub variable BUDGET_EMAIL."
+  description = "Recipient of the budget alerts. CI sets it from the GitHub secret BUDGET_EMAIL."
   type        = string
   sensitive   = true
 
   validation {
     condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$", var.budget_email))
-    error_message = "budget_email must be an email address (set the GitHub variable BUDGET_EMAIL)."
+    error_message = "budget_email must be an email address (set the GitHub secret BUDGET_EMAIL)."
   }
 }
 ```
@@ -85,7 +85,7 @@ before `terraform plan` in `landing-zone`. (`./lab.sh nuke` sets a placeholder f
 ## Commands
 
 ```bash
-gh variable set BUDGET_EMAIL --body "you@example.com"
+gh secret set BUDGET_EMAIL --body "you@example.com"
 git switch -c budget
 git add .github/workflows/terraform.yml terraform/landing-zone
 git commit -m "landing-zone: monthly budget with alerts"

@@ -27,8 +27,9 @@ env:
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   # Budget alert address (tf-12) for both jobs: plan needs every variable as much as apply.
-  # A repo variable, not a tfvars file: tfvars are gitignored and the repo is public.
-  TF_VAR_budget_email: ${{ vars.BUDGET_EMAIL }}
+  # A repo secret, not a tfvars file (gitignored) or a variable: the repo is public, and GitHub
+  # prints env values in every step log; secrets are masked there.
+  TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
   # Dependency order for .github/scripts/stacks.sh. Stacks not listed run afterwards, alphabetically.
   STACK_ORDER: "landing-zone shared env-dev env-prod observability teams/payments"
 

@@ -35,12 +35,12 @@ variable "owner" {
 }
 
 variable "budget_email" {
-  description = "Recipient of the budget alerts. CI sets it from the GitHub variable BUDGET_EMAIL (TF_VAR_budget_email)."
+  description = "Recipient of the budget alerts. CI sets it from the GitHub secret BUDGET_EMAIL (TF_VAR_budget_email)."
   type        = string
   sensitive   = true # keeps the address out of plan output, which is public in PR comments
 
   validation {
     condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$", var.budget_email))
-    error_message = "budget_email must be an email address (set the GitHub variable BUDGET_EMAIL)."
+    error_message = "budget_email must be an email address (set the GitHub secret BUDGET_EMAIL)."
   }
 }

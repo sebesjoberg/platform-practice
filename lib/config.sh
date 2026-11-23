@@ -68,9 +68,9 @@ cmd_init() {
     write_config
     echo "LEARNER_IP=$LEARNER_IP"
     # The SSH rule on nsg-<prefix>-hub-runner lives in the shared stack (tf-25), and CI reads
-    # the address from the repo variable LEARNER_IP, not from config.env.
+    # the address from the repo secret LEARNER_IP, not from config.env.
     echo "re-apply: shared (tf-25 NSG): rule allow-ssh-from-learner on nsg-$PREFIX-hub-runner"
-    echo "  gh variable set LEARNER_IP -R $GH_OWNER/$LIVE_REPO --body $LEARNER_IP"
+    echo "  gh secret set LEARNER_IP -R $GH_OWNER/$LIVE_REPO --body $LEARNER_IP"
     echo "  gh workflow run terraform.yml -R $GH_OWNER/$LIVE_REPO --ref main -f stacks=shared"
     return 0
   fi

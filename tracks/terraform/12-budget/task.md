@@ -12,8 +12,9 @@ code. Your email address must not end up in the public repo.
 
 ## Deliverables
 
-- [ ] A GitHub **repo variable** `BUDGET_EMAIL` on `{{GH_OWNER}}/{{LIVE_REPO}}` with your
-      email address.
+- [ ] A GitHub **repo secret** `BUDGET_EMAIL` on `{{GH_OWNER}}/{{LIVE_REPO}}` with your
+      email address. Not a repo variable: GitHub prints `env:` values in every step log, and
+      the logs of a public repo are public. Only secrets are masked there.
 - [ ] The workflow passes it to Terraform as `TF_VAR_budget_email` in **both** jobs (`plan`
       needs every variable just like `apply`). Keep exactly the two jobs.
 - [ ] In `terraform/landing-zone`, a variable `budget_email`: no default, `sensitive = true`,

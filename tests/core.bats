@@ -78,7 +78,7 @@ fake_azure() {
   run "$LAB" init --refresh-ip
   [ "$status" -eq 0 ]
   [[ "$output" == *"re-apply: shared (tf-25 NSG)"* ]]
-  [[ "$output" == *"gh variable set LEARNER_IP -R learner/acme-platform --body 198.51.100.99"* ]]
+  [[ "$output" == *"gh secret set LEARNER_IP -R learner/acme-platform --body 198.51.100.99"* ]]
   [[ "$output" == *"-f stacks=shared"* ]]
   after=$(grep -v '^LEARNER_IP' "$LAB_HOME/config.env" | tr -d '"')
   [ "$before" = "$after" ]

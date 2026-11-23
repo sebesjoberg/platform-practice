@@ -8,12 +8,15 @@ Docs:
 
 Traps:
 - **Where does a personal value go in a public GitOps repo?** Not in a `.tf` file, not in a
-  tfvars file (gitignored, so CI never sees it). A GitHub variable, mapped to `TF_VAR_...` in
+  tfvars file (gitignored, so CI never sees it). A GitHub **secret**, mapped to `TF_VAR_...` in
   the workflow. It's an `env:` entry; at workflow level it reaches both jobs at once.
+- **Why a secret and not a variable?** GitHub prints each step's `env:` values in the run log,
+  and a public repo's logs are public. Variables appear in clear text there, secrets as `***`.
+  The address isn't a password, but it is personal.
 - **`TF_VAR_` is case-sensitive after the prefix**: `TF_VAR_budget_email` for
   `variable "budget_email"`.
-- **A missing GitHub variable doesn't leave the variable unset.** `${{ vars.BUDGET_EMAIL }}`
-  of an unknown variable is an empty string, so Terraform gets `TF_VAR_budget_email=""` and
+- **A missing GitHub secret doesn't leave the variable unset.** `${{ secrets.BUDGET_EMAIL }}`
+  of an unknown secret is an empty string, so Terraform gets `TF_VAR_budget_email=""` and
   your validation fails ("budget_email must be an email address ..."). That's why the
   validation matters: without it, the action group would be planned with an empty address.
   (Run locally without the variable at all, `plan -input=false` stops with "No value for

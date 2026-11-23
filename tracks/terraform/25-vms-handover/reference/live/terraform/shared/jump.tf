@@ -44,7 +44,7 @@ resource "azurerm_network_security_rule" "ssh_from_learner" {
   destination_port_range      = "22"
   source_address_prefix       = "${var.learner_ip}/32"
   destination_address_prefix  = data.azurerm_subnet.runner.address_prefixes[0]
-  description                 = "SSH to the jump host from the learner's IP (repo variable LEARNER_IP)."
+  description                 = "SSH to the jump host from the learner's IP (repo secret LEARNER_IP)."
 }
 
 # The jump VM's identity reads the whole subscription: Ansible's dynamic inventory
