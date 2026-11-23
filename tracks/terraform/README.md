@@ -74,10 +74,13 @@ Later tasks and their checks assume these. Keep them in your own code.
   `web`) and `env` (`hub`, `dev`): the Ansible track's dynamic inventory groups by them.
 - **Inputs.** From tf-07 stacks declare validated variables with the lab values as defaults,
   so CI needs no tfvars file (`*.tfvars` is gitignored and the repo is public). The one
-  personal value, the budget alert address, is the repo variable `BUDGET_EMAIL`, which the
-  workflow passes as `TF_VAR_budget_email` (tf-12). From tf-25 two more: `LEARNER_IP` (your
-  public IP, the only SSH source for the jump VM; `sensitive = true`) and `SSH_PUBLIC_KEY` (the
-  public half of `~/.ssh/<prefix>_lab`; the private key never goes into a repo), passed as
+  personal value, the budget alert address, is the repo **secret** `BUDGET_EMAIL`, which the
+  workflow passes as `TF_VAR_budget_email` (tf-12). Personal values are secrets, not repo
+  variables: GitHub prints each step's `env:` values in the run log, a public repo's logs are
+  public, and only secrets are masked. `sensitive = true` in Terraform then keeps them out of the
+  public plan comments. From tf-25 two more: the secret `LEARNER_IP` (your public IP, the only
+  SSH source for the jump VM) and the variable `SSH_PUBLIC_KEY` (the public half of
+  `~/.ssh/<prefix>_lab`, public by nature; the private key never goes into a repo), passed as
   `TF_VAR_learner_ip` and `TF_VAR_ssh_public_key`. Export the `TF_VAR_*` values in your shell
   before running those stacks locally (`./lab.sh pause` and `nuke` fill in harmless values).
 - **Workloads.** Each environment's identity and Key Vault come from the `app-env` module
@@ -142,6 +145,17 @@ subnets' default outbound access, which costs nothing. Azure no longer turns it 
 for new VNets, but the azurerm provider creates subnets with
 `default_outbound_access_enabled = true`, which Azure still accepts. A NAT gateway, the
 production answer, would cost 0.045 USD an hour plus data, more than all three VMs together.
+
+Outbound traffic, everything that leaves the VNets:
+
+| From | To | Path |
+|---|---|---|
+| Web VMs (`snet-app`, no public IP) | Ubuntu archive (apt), any internet endpoint | the subnet's default outbound access (free) |
+| Jump VM (`snet-runner`) | internet, Azure APIs (inventory, Key Vault) | its own public IP `pip-<prefix>-jump` |
+| Jump VM | Key Vault data plane | resolves `kv-….vault.azure.net` to the private endpoint (the hub is linked to `privatelink.vaultcore.azure.net`), over the peering |
+| Container Apps environment (`snet-aca`, delegated) | `acr<prefix><suffix>.azurecr.io` image pulls (public endpoint, Basic has no private link), Entra ID tokens for the app identity | egress the platform manages for a delegated subnet; Azure documents private subnets as not applicable to delegated subnets. No NSG rules on `snet-aca` restrict it |
+| Container Apps environment | Key Vault reference (`greeting`) | `vnet-<prefix>-dev` is linked to `privatelink.vaultcore.azure.net`, so the vault name resolves to `pe-kv-<prefix>-dev` in the same VNet; if the platform fetches the reference outside the VNet, it uses the vault's public endpoint (public access stays enabled) |
+| CI (GitHub-hosted runners), WSL | Key Vault, state account, ARM | public endpoints, Entra ID only |
 
 Two things the pipeline can't do alone after `./lab.sh pause`: the new registry is empty, so
 `./lab.sh resume` applies `shared` first and imports the app image before the full run; and
