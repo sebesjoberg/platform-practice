@@ -1,5 +1,6 @@
 # shellcheck shell=bash
 # Catchup engine: ./lab.sh catchup [--yes] <id>
+# Needs lib/progress.sh too (lab.sh sources it): a successful catchup marks the replayed tasks done.
 
 # _replay_ids <id>: task ids to replay, one per line, in order.
 # terraform track: up to <id>.
@@ -178,13 +179,14 @@ _catchup() {
   local id=$1 yes=$2 scope=all tid out do_mod=0 rc kind need_live=0 need_mod=0
   # shellcheck disable=SC2034 # read by _run_hook (dynamic scope)
   local CATCHUP_YES=$yes
-  local -a ids=()
+  local -a ids=() done_ids=()
   if [[ "$(task_track "$id")" == ansible ]]; then
     task_dir tf-25 >/dev/null || die 2 "tf-25 not found"
     rc=0
     grade_quiet tf-25 || rc=$?
     case "$rc" in
-      0) ;;
+      # tf-25's checks pass: as good as ./lab.sh grade tf-25, which every Ansible task requires.
+      0) done_ids+=(tf-25) ;;
       1)
         echo "tf-25 checks fail; replaying the Terraform reference first"
         _catchup tf-25 "$yes"
@@ -232,6 +234,11 @@ _catchup() {
   # release then); their scripts tell the phases apart with CATCHUP_PHASE.
   for tid in "${ids[@]}"; do
     _run_hook "$tid" after-push
+  done
+  # Every replayed task is done now, as if graded: ./lab.sh next continues after <id> and
+  # grade --all covers them. Start times already recorded are kept.
+  for tid in "${done_ids[@]}" "${ids[@]}"; do
+    progress_finish "$tid"
   done
   echo "caught up to $id"
 }

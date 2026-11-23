@@ -26,6 +26,58 @@ fake_sub() { fake_response az "account show --query id -o tsv" 0 "00000000-0000-
 
 mark_done() { printf '%s\t1\t2\n' "$1" >>"$LAB_HOME/progress"; }
 
+# stateful_gh: a gh on PATH that knows resume's run bookkeeping. The dispatched terraform.yml run
+# is 333 (listed once "workflow run terraform.yml ... stacks=all" happened); run view answers
+# from $STATE/view (one state per line, consumed in order; the last one repeats). Every other gh
+# call goes to the static fakes (fake_response).
+stateful_gh() {
+  # A bounded wait: a test that never sees its run fails instead of hanging.
+  export STATE="$TEST_TMP/state" RESUME_POLL_SECONDS=0 RESUME_RUN_TIMEOUT=20
+  mkdir -p "$STATE" "$TEST_TMP/bin"
+  echo "completed success" >"$STATE/view"
+  cat >"$TEST_TMP/bin/gh" <<'SH'
+#!/usr/bin/env bash
+r="-R learner/acme-platform"
+case "$*" in
+  "run list $r --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq .[].databaseId")
+    echo "gh $*" >>"$FAKE_LOG"
+    [[ -f "$STATE/dispatched" ]] && echo 333
+    echo 200 ;;
+  "workflow run terraform.yml $r --ref main -f stacks=all")
+    echo "gh $*" >>"$FAKE_LOG"
+    touch "$STATE/dispatched" ;;
+  "run view 333 $r --json status,conclusion --jq "*)
+    echo "gh run view 333" >>"$FAKE_LOG"
+    head -n1 "$STATE/view"
+    if [[ "$(wc -l <"$STATE/view")" -gt 1 ]]; then sed -i 1d "$STATE/view"; fi ;;
+  *) exec "$REPO_ROOT/tests/fakes/_fake" gh "$@" ;;
+esac
+SH
+  chmod +x "$TEST_TMP/bin/gh"
+  export PATH="$TEST_TMP/bin:$PATH"
+}
+
+# stub_ansible_lib: a TRACKS_DIR whose tracks/ansible/lib scripts only log their name, exiting
+# with KV_RC (keyvault-prereqs.sh) / RR_RC (runner-register.sh), default 0.
+stub_ansible_lib() {
+  local lib="$TEST_TMP/tracks/ansible/lib"
+  mkdir -p "$lib"
+  printf '#!/usr/bin/env bash\necho keyvault-prereqs.sh >>"$FAKE_LOG"\nexit "${KV_RC:-0}"\n' >"$lib/keyvault-prereqs.sh"
+  printf '#!/usr/bin/env bash\necho runner-register.sh >>"$FAKE_LOG"\nexit "${RR_RC:-0}"\n' >"$lib/runner-register.sh"
+  export TRACKS_DIR="$TEST_TMP/tracks"
+}
+
+# live_ansible <files...>: ansible/ in the live repo with these (empty) files, and an empty venv.
+live_ansible() {
+  local f
+  mkdir -p "$LIVE/ansible/.venv/bin"
+  : >"$LIVE/ansible/.venv/bin/activate"
+  for f in "$@"; do
+    mkdir -p "$(dirname "$LIVE/$f")"
+    : >"$LIVE/$f"
+  done
+}
+
 @test "pause destroys stacks in order and skips missing" {
   mkstacks shared env-dev teams/payments
   fake_tf shared env-dev teams/payments
@@ -41,35 +93,123 @@ terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
 }
 
-@test "resume dispatches workflow when present" {
+@test "resume dispatches the terraform workflow in the live repo and waits for that run" {
+  stateful_gh
   mkdir -p "$LIVE/.github/workflows"
   : >"$LIVE/.github/workflows/terraform.yml"
   : >"$LAB_HOME/paused"
-  fake_response gh "workflow run terraform.yml --ref main -f stacks=all" 0
+  printf 'queued \nin_progress \ncompleted success\n' >"$STATE/view"
   run "$LAB" resume
   [ "$status" -eq 0 ]
   [ ! -e "$LAB_HOME/paused" ]
-  [ "$(cat "$FAKE_LOG")" = "gh workflow run terraform.yml --ref main -f stacks=all" ]
+  [[ "$output" == *"waiting for terraform.yml run 333"* ]]
+  expected="gh run list -R learner/acme-platform --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq .[].databaseId
+gh workflow run terraform.yml -R learner/acme-platform --ref main -f stacks=all
+gh run list -R learner/acme-platform --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq .[].databaseId
+gh run view 333
+gh run view 333
+gh run view 333"
+  [ "$(cat "$FAKE_LOG")" = "$expected" ]
 }
 
-@test "resume dispatches ansible workflow past an-16" {
+@test "resume waits through apply-prod without approving it, and says so once" {
+  stateful_gh
   mkdir -p "$LIVE/.github/workflows"
   : >"$LIVE/.github/workflows/terraform.yml"
-  mark_done an-16
-  fake_response gh "workflow run terraform.yml --ref main -f stacks=all" 0
-  fake_response gh "workflow run ansible.yml --ref main -f env=dev" 0
+  printf 'waiting \nwaiting \nin_progress \ncompleted success\n' >"$STATE/view"
   run "$LAB" resume
   [ "$status" -eq 0 ]
-  [ "$(sed -n 2p "$FAKE_LOG")" = "gh workflow run ansible.yml --ref main -f env=dev" ]
+  [ "$(grep -c "waits for your approval of apply-prod" <<<"$output")" -eq 1 ]
+  [[ "$(cat "$FAKE_LOG")" != *pending_deployments* ]]
+}
+
+@test "a failed terraform run keeps the lab paused and skips the Ansible steps" {
+  stateful_gh
+  stub_ansible_lib
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  live_ansible ansible/site.yml
+  : >"$LAB_HOME/paused"
+  echo "completed failure" >"$STATE/view"
+  run "$LAB" resume
+  [ "$status" -eq 1 ]
+  [ -f "$LAB_HOME/paused" ]
+  [[ "$output" == *"terraform.yml run 333 ended: failure"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *keyvault-prereqs* ]]
+}
+
+@test "resume before an-15: Key Vault prerequisites, then site.yml from ansible/.venv" {
+  stateful_gh
+  stub_ansible_lib
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  live_ansible ansible/site.yml
+  fake_response ansible-playbook "site.yml" 0
+  : >"$LAB_HOME/paused"
+  run "$LAB" resume
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB_HOME/paused" ]
+  [ "$(tail -n 2 "$FAKE_LOG")" = "keyvault-prereqs.sh
+ansible-playbook site.yml" ]
+  [ "$(grep -n "gh run view 333" "$FAKE_LOG" | tail -n1 | cut -d: -f1)" -lt "$(grep -n keyvault-prereqs "$FAKE_LOG" | cut -d: -f1)" ]
+}
+
+@test "resume from an-15: runner-register.sh before ansible.yml is dispatched (from an-16)" {
+  stateful_gh
+  stub_ansible_lib
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  live_ansible ansible/site.yml ansible/runner.yml .github/workflows/ansible.yml
+  fake_response gh "workflow run ansible.yml -R learner/acme-platform --ref main -f env=dev" 0
+  run "$LAB" resume
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 3 "$FAKE_LOG")" = "keyvault-prereqs.sh
+runner-register.sh
+gh workflow run ansible.yml -R learner/acme-platform --ref main -f env=dev" ]
+  [[ "$(cat "$FAKE_LOG")" != *"ansible-playbook"* ]]
+}
+
+@test "resume at an-15 (runner, no Ansible pipeline yet) registers the runner and dispatches nothing" {
+  stateful_gh
+  stub_ansible_lib
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  live_ansible ansible/site.yml ansible/runner.yml
+  run "$LAB" resume
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 "$FAKE_LOG")" = "runner-register.sh" ]
+}
+
+@test "failing Ansible steps keep the lab paused" {
+  stateful_gh
+  stub_ansible_lib
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  live_ansible ansible/site.yml ansible/runner.yml
+  : >"$LAB_HOME/paused"
+  KV_RC=1 run "$LAB" resume
+  [ "$status" -eq 1 ]
+  [ -f "$LAB_HOME/paused" ]
+  [[ "$output" == *"keyvault-prereqs.sh failed"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *runner-register* ]]
+  rm -f "$STATE/dispatched" # each resume dispatches a new run
+  KV_RC=3 run "$LAB" resume
+  [ "$status" -eq 3 ]
+  [ -f "$LAB_HOME/paused" ]
+  rm -f "$STATE/dispatched"
+  RR_RC=1 run "$LAB" resume
+  [ "$status" -eq 1 ]
+  [ -f "$LAB_HOME/paused" ]
+  [[ "$output" == *"runner-register.sh failed"* ]]
 }
 
 @test "resume applies locally before pipelines exist" {
+  stub_ansible_lib
   mkstacks shared env-prod teams/payments
   fake_tf shared env-prod teams/payments
   : >"$LAB_HOME/paused"
-  mark_done an-02
-  mkdir -p "$LIVE/ansible"
-  fake_response ansible-playbook "-i inventory site.yml" 0
+  live_ansible ansible/site.yml
+  fake_response ansible-playbook "site.yml" 0
   run "$LAB" resume
   [ "$status" -eq 0 ]
   [ ! -e "$LAB_HOME/paused" ]
@@ -79,11 +219,14 @@ terraform -chdir=$LIVE/terraform/env-prod init -input=false
 terraform -chdir=$LIVE/terraform/env-prod apply -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/teams/payments init -input=false
 terraform -chdir=$LIVE/terraform/teams/payments apply -auto-approve -input=false
-ansible-playbook -i inventory site.yml"
+keyvault-prereqs.sh
+ansible-playbook site.yml"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
 }
 
-@test "resume runs no ansible without ansible progress" {
+@test "resume runs no Ansible step without ansible/ in the live repo" {
+  stub_ansible_lib
+  mark_done an-02
   mkstacks shared
   fake_tf shared
   run "$LAB" resume
@@ -286,23 +429,26 @@ SH
 }
 
 @test "resume imports the app image into the new registry before the full run" {
+  stateful_gh
   mkdir -p "$LIVE/.github/workflows" "$LIVE/terraform/shared" "$LIVE/terraform/env-dev"
   : >"$LIVE/.github/workflows/terraform.yml"
   printf '      image = "${data.azurerm_container_registry.shared.login_server}/hello:1.0"\n' >"$LIVE/terraform/env-dev/container-app.tf"
   : >"$LAB_HOME/paused"
-  fake_response gh "workflow run terraform.yml --ref main -f stacks=shared" 0
+  fake_response gh "workflow run terraform.yml -R learner/acme-platform --ref main -f stacks=shared" 0
   fake_response az "acr show -n acracmeabc123 --query provisioningState -o tsv" 0 Succeeded
   fake_response az "acr repository show -n acracmeabc123 --image hello:1.0 -o none" 1
   fake_response az "acr import --name acracmeabc123 --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0 -o none" 0
-  fake_response gh "workflow run terraform.yml --ref main -f stacks=all" 0
   run "$LAB" resume
   [ "$status" -eq 0 ]
   [ ! -e "$LAB_HOME/paused" ]
-  expected="gh workflow run terraform.yml --ref main -f stacks=shared
+  expected="gh workflow run terraform.yml -R learner/acme-platform --ref main -f stacks=shared
 az acr show -n acracmeabc123 --query provisioningState -o tsv
 az acr repository show -n acracmeabc123 --image hello:1.0 -o none
 az acr import --name acracmeabc123 --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0 -o none
-gh workflow run terraform.yml --ref main -f stacks=all"
+gh run list -R learner/acme-platform --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq .[].databaseId
+gh workflow run terraform.yml -R learner/acme-platform --ref main -f stacks=all
+gh run list -R learner/acme-platform --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq .[].databaseId
+gh run view 333"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
 }
 
@@ -311,7 +457,7 @@ gh workflow run terraform.yml --ref main -f stacks=all"
   : >"$LIVE/.github/workflows/terraform.yml"
   printf '      image = "x.azurecr.io/hello:1.0"\n' >"$LIVE/terraform/env-dev/container-app.tf"
   : >"$LAB_HOME/paused"
-  fake_response gh "workflow run terraform.yml --ref main -f stacks=shared" 0
+  fake_response gh "workflow run terraform.yml -R learner/acme-platform --ref main -f stacks=shared" 0
   fake_response az "acr show -n acracmeabc123 --query provisioningState -o tsv" 0 Succeeded
   fake_response az "acr repository show -n acracmeabc123 --image hello:1.0 -o none" 1
   fake_response az "acr import --name acracmeabc123 --source mcr.microsoft.com/k8se/quickstart:latest --image hello:1.0 -o none" 1
@@ -341,7 +487,7 @@ gh workflow run terraform.yml --ref main -f stacks=all"
   [ "$(head -n1 "$FAKE_LOG")" = "gh workflow disable drift.yml -R learner/acme-platform" ]
   : >"$FAKE_LOG"
   : >"$LIVE/.github/workflows/terraform.yml"
-  fake_response gh "workflow run terraform.yml --ref main -f stacks=all" 0
+  stateful_gh
   fake_response gh "workflow enable drift.yml -R learner/acme-platform" 0
   run "$LAB" resume
   [ "$status" -eq 0 ]

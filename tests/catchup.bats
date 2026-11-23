@@ -523,3 +523,37 @@ main_case() { # main_case <runs json> <jobs per run: "id:conclusion ..."> <funct
   main_case "$runs" "5:skipped 4:skipped" "ci_applied_since o/r 0"
   [ "$status" -ne 0 ]
 }
+
+# finished_ids: the ids with a finish time in the progress file, space separated.
+finished_ids() { awk -F'\t' '$3 != "" { printf "%s ", $1 }' "$LAB_HOME/progress"; }
+
+@test "catchup marks the replayed tasks done, keeping recorded start times" {
+  printf 'tf-01\t5\t\n' >"$LAB_HOME/progress"
+  run "$LAB" catchup --yes tf-25
+  [ "$status" -eq 0 ]
+  [ "$(finished_ids)" = "tf-01 tf-02 tf-25 " ]
+  grep -qP '^tf-01\t5\t\d+$' "$LAB_HOME/progress"
+  run "$LAB" next terraform
+  [[ "$output" == *"all tasks in terraform done"* ]]
+  run "$LAB" next ansible
+  [ "$status" -eq 0 ]
+  grep -qP '^an-01\t\d+\t$' "$LAB_HOME/progress"
+}
+
+@test "ansible catchup marks tf-25 done when its checks pass, and the replayed Ansible tasks" {
+  mkdir -p "$(LIVE)/terraform"
+  echo mine >"$(LIVE)/terraform/late.tf"
+  git -C "$(LIVE)" add -A
+  git -C "$(LIVE)" commit -q -m work
+  run "$LAB" catchup --yes an-02
+  [ "$status" -eq 0 ]
+  [ "$(finished_ids)" = "tf-25 an-01 an-02 " ]
+}
+
+@test "a failed catchup marks nothing done" {
+  cp -r "$TRACKS_DIR" "$TEST_TMP/tracks"
+  echo 'exit 1' >"$TEST_TMP/tracks/terraform/03-late/catchup.sh"
+  TRACKS_DIR="$TEST_TMP/tracks" run "$LAB" catchup --yes tf-25
+  [ "$status" -eq 1 ]
+  [ -z "$(finished_ids 2>/dev/null)" ]
+}

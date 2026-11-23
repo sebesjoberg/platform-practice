@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Grader: ./lab.sh grade [id | --all | --offline id]
+# Grader: ./lab.sh grade [id | --all [--exclude id]... | --offline id]
 
 # grade_preflight: once per grade invocation, lazily before the first cloud check.
 grade_preflight() {
@@ -18,7 +18,6 @@ grade_task() {
   local id=$1 mode=$2 d rc=0
   d="$(task_dir "$id")"
   [[ -f "$d/checks.sh" ]] || die 1 "$id has no checks.sh"
-  bash -n "$d/checks.sh" 2>/dev/null || die 1 "$id: checks.sh failed to load"
   bash -n "$d/checks.sh" 2>/dev/null || die 1 "$id: checks.sh failed to load"
   : >"$GRADE_TMP/results"
   (
@@ -71,10 +70,15 @@ cmd_grade() {
   need timeout
   GRADE_TMP="$(mktemp -d)"
   trap 'rm -rf "$GRADE_TMP"' EXIT
-  local mode=normal all=0 id=""
+  local mode=normal all=0 id="" exclude=" "
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --all) all=1 ;;
+      --exclude)
+        [[ -n "${2:-}" ]] || die 2 "grade: --exclude needs a task id"
+        exclude+="$2 "
+        shift
+        ;;
       --offline) mode=offline ;;
       -*) die 2 "grade: unknown option $1" ;;
       *) id=$1 ;;
@@ -86,9 +90,15 @@ cmd_grade() {
     die 7 "lab is paused — ./lab.sh resume first"
   fi
 
+  [[ "$exclude" == " " || $all -eq 1 ]] || die 2 "grade: --exclude only goes with --all"
   if [[ $all -eq 1 ]]; then
+    # A check may run grade --all itself (cap-01's regression check): it sees LAB_GRADE_ALL=1 and
+    # leaves the job to this run. A grade --all inside a grade --all would only repeat it.
+    [[ "${LAB_GRADE_ALL:-}" != 1 ]] || die 2 "grade: --all is already running (a check called grade --all)"
+    export LAB_GRADE_ALL=1
     local regress=() tid
     while IFS= read -r tid; do
+      [[ "$exclude" == *" $tid "* ]] && continue
       echo "== $tid"
       if grade_task "$tid" "$mode"; then :; else regress+=("$tid"); fi
       echo "$GRADE_PASSED/$GRADE_TOTAL passed"

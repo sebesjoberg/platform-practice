@@ -142,3 +142,34 @@ progress_has_g08() { grep -q '^g-08' "$LAB_HOME/progress" 2>/dev/null; }
   [[ "$output" == *"→ LIVE_DIR not set"* ]]
   [[ "$output" == *"after"* ]]
 }
+
+@test "grade --all --exclude skips the named tasks; --exclude needs --all" {
+  touch "$TEST_TMP/acme/acme-platform/marker.txt"
+  printf 'g-09\t1\t2\ng-06\t1\t2\n' >"$LAB_HOME/progress"
+  run "$LAB" grade --all --exclude g-09
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"== g-06"* ]]
+  [[ "$output" != *"== g-09"* ]]
+  run "$LAB" grade --exclude g-09 g-06
+  [ "$status" -eq 2 ]
+  run "$LAB" grade --all --exclude
+  [ "$status" -eq 2 ]
+}
+
+@test "grade --all tells its checks (LAB_GRADE_ALL=1) and refuses to nest" {
+  cp -r "$TRACKS_DIR" "$TEST_TMP/tracks"
+  mkdir -p "$TEST_TMP/tracks/gradedemo/12-nested"
+  printf -- '---\nid: g-12\ntitle: nested\ntarget_minutes: 5\nrequires: []\n---\n# nested\n' >"$TEST_TMP/tracks/gradedemo/12-nested/task.md"
+  # shellcheck disable=SC2016
+  printf '%s\n' 'check_code "inside grade --all" '"'"'[[ "${LAB_GRADE_ALL:-}" == 1 ]]'"'"' "not inside grade --all"' >"$TEST_TMP/tracks/gradedemo/12-nested/checks.sh"
+  export TRACKS_DIR="$TEST_TMP/tracks"
+  printf 'g-12\t1\t2\n' >"$LAB_HOME/progress"
+  run "$LAB" grade g-12
+  [ "$status" -eq 1 ]
+  run "$LAB" grade --all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"✓ PASS  inside grade --all"* ]]
+  LAB_GRADE_ALL=1 run "$LAB" grade --all
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"already running"* ]]
+}

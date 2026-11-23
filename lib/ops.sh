@@ -49,7 +49,7 @@ resume_import_image() {
   acr_hello_needed "$LIVE_DIR" || return 0
   need az
   echo "resume: applying shared first, to import the app image into the new registry"
-  gh workflow run terraform.yml --ref main -f stacks=shared </dev/null || die 1 "could not dispatch terraform.yml"
+  gh workflow run terraform.yml -R "$GH_OWNER/$LIVE_REPO" --ref main -f stacks=shared </dev/null || die 1 "could not dispatch terraform.yml"
   acr_wait_ready "${RESUME_ACR_WAIT:-1200}" </dev/null || die 1 "the registry did not come back; see gh run list --workflow terraform.yml"
   acr_hello_import </dev/null || die 1 "could not import the app image into $(acr_name)"
 }
@@ -80,21 +80,108 @@ cmd_pause() {
   echo "paused; ./lab.sh resume brings it back"
 }
 
-any_ansible_done() {
-  [[ -f "$(progress_file)" ]] || return 1
-  awk -F'\t' '$1 ~ /^an-/ && $3 != "" {found=1} END {exit !found}' "$(progress_file)"
+# resume_run_ids: ids of the 20 newest workflow_dispatch runs of terraform.yml, one per line.
+resume_run_ids() {
+  gh run list -R "$GH_OWNER/$LIVE_REPO" --workflow terraform.yml --event workflow_dispatch --limit 20 \
+    --json databaseId --jq '.[].databaseId' </dev/null
+}
+
+# resume_dispatch_ids: the same, space separated with spaces around (taken before resume
+# dispatches, to spot its run afterwards).
+resume_dispatch_ids() {
+  printf ' %s ' "$(resume_run_ids | tr '\n' ' ')"
+}
+
+# resume_wait_run <known ids>: find the terraform.yml run dispatched after <known ids> was taken
+# and wait until it completes (RESUME_RUN_TIMEOUT seconds, default 90 minutes). Approves nothing:
+# a run waiting for the prod environment is the learner's to approve, so it says so once.
+# 0 = the run succeeded.
+resume_wait_run() {
+  local known=$1 repo="$GH_OWNER/$LIVE_REPO" id="" r state told=0 deadline
+  deadline=$((SECONDS + ${RESUME_RUN_TIMEOUT:-5400}))
+  while [[ -z "$id" ]] && ((SECONDS < deadline)); do
+    for r in $(resume_run_ids); do
+      if [[ "$known" != *" $r "* ]]; then
+        id=$r
+        break
+      fi
+    done
+    [[ -n "$id" ]] || sleep "${RESUME_POLL_SECONDS:-10}"
+  done
+  [[ -n "$id" ]] || { echo "resume: could not find the dispatched terraform.yml run" >&2; return 1; }
+  echo "resume: waiting for terraform.yml run $id (gh run watch $id -R $repo)"
+  while ((SECONDS < deadline)); do
+    state="$(gh run view "$id" -R "$repo" --json status,conclusion --jq '.status + " " + (.conclusion // "")' </dev/null)" || state=unknown
+    case "$state" in
+      "completed success") return 0 ;;
+      completed*)
+        echo "resume: terraform.yml run $id ended: ${state#completed }" >&2
+        return 1
+        ;;
+      waiting*)
+        if [[ $told -eq 0 ]]; then
+          echo "resume: run $id waits for your approval of apply-prod (Actions tab, Review deployments)"
+          told=1
+        fi
+        ;;
+    esac
+    sleep "${RESUME_POLL_SECONDS:-20}"
+  done
+  echo "resume: terraform.yml run $id did not finish in time" >&2
+  return 1
+}
+
+# resume_ansible: after the Terraform run, bring the Ansible track's state back (only when the
+# live repo has ansible/). The VMs and the dev vault are new and empty:
+#   1. tracks/ansible/lib/keyvault-prereqs.sh puts back the vault objects the playbooks read
+#   2. from an-15 (ansible/runner.yml exists) the jump host must become the runner again:
+#      runner-register.sh (runner.yml, the vault objects, site.yml), then from an-16 the
+#      pipeline's apply (ansible.yml, env=dev)
+#   3. before that, site.yml from ansible/.venv on this machine
+resume_ansible() {
+  local an="$LIVE_DIR/ansible" lib="$TRACKS_DIR/ansible/lib" rc=0
+  [[ -d "$an" ]] || return 0
+  echo "resume: restoring the Key Vault objects the playbooks read (keyvault-prereqs.sh, up to ~10 minutes)"
+  bash "$lib/keyvault-prereqs.sh" </dev/null || rc=$?
+  case $rc in
+    0) ;;
+    3) die 3 "resume: keyvault-prereqs.sh needs az and python3 (see its message); then $lib/keyvault-prereqs.sh and ./lab.sh resume" ;;
+    *) die 1 "resume: keyvault-prereqs.sh failed (az login? the dev vault?); fix it, then ./lab.sh resume again" ;;
+  esac
+  if [[ -f "$an/runner.yml" ]]; then
+    echo "resume: registering the rebuilt jump host as your runner (runner-register.sh: runner.yml, site.yml)"
+    bash "$lib/runner-register.sh" </dev/null || die 1 "resume: runner-register.sh failed; run $lib/runner-register.sh, then ./lab.sh resume again"
+    if [[ -f "$LIVE_DIR/.github/workflows/ansible.yml" ]]; then
+      need gh
+      gh workflow run ansible.yml -R "$GH_OWNER/$LIVE_REPO" --ref main -f env=dev </dev/null || die 1 "could not dispatch ansible.yml"
+      echo "resume: dispatched ansible.yml (env=dev) on the runner"
+    fi
+  elif [[ -f "$an/site.yml" ]]; then
+    [[ -f "$an/.venv/bin/activate" ]] ||
+      die 1 "resume: no $an/.venv (python3 -m venv ansible/.venv && ansible/.venv/bin/pip install -r ansible/requirements.txt)"
+    echo "resume: configuring the VMs (site.yml from ansible/.venv)"
+    (
+      cd "$an" || exit 1
+      # shellcheck disable=SC1091
+      source .venv/bin/activate
+      ANSIBLE_CONFIG="$PWD/ansible.cfg" ansible-playbook site.yml </dev/null
+    ) || die 1 "resume: site.yml failed; fix it, then cd $an && source .venv/bin/activate && ansible-playbook site.yml"
+  fi
 }
 
 cmd_resume() {
   load_config
-  local i stack
+  local i stack known
   if [[ -f "$LIVE_DIR/.github/workflows/terraform.yml" ]]; then
     need gh
     resume_import_image
-    gh workflow run terraform.yml --ref main -f stacks=all </dev/null || die 1 "could not dispatch terraform.yml"
+    known="$(resume_dispatch_ids)"
+    gh workflow run terraform.yml -R "$GH_OWNER/$LIVE_REPO" --ref main -f stacks=all </dev/null || die 1 "could not dispatch terraform.yml"
     if [[ -f "$LIVE_DIR/terraform/env-prod/main.tf" ]] && grep -qs 'environment:[[:space:]]*prod' "$LIVE_DIR/.github/workflows/terraform.yml"; then
       echo "resume: approve the run's apply-prod job (Actions tab, Review deployments) to rebuild prod"
     fi
+    resume_wait_run "$known" ||
+      die 1 "resume: the terraform run did not succeed; the lab stays paused. See gh run list -R $GH_OWNER/$LIVE_REPO --workflow terraform.yml, then ./lab.sh resume again"
   else
     need terraform
     for ((i = ${#PAUSE_ORDER[@]} - 1; i >= 0; i--)); do
@@ -104,13 +191,7 @@ cmd_resume() {
       tf_stack "$stack" apply -auto-approve -input=false
     done
   fi
-  if progress_done an-16; then
-    need gh
-    gh workflow run ansible.yml --ref main -f env=dev </dev/null || die 1 "could not dispatch ansible.yml"
-  elif any_ansible_done; then
-    need ansible-playbook
-    (cd "$LIVE_DIR/ansible" && ansible-playbook -i inventory site.yml </dev/null) || die 1 "ansible-playbook failed"
-  fi
+  resume_ansible
   drift_workflow enable
   rm -f "$LAB_HOME/paused"
   echo "resumed"

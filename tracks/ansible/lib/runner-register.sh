@@ -4,8 +4,10 @@
 # has nothing to run on. This script, run as you from your machine:
 #   1. registers the new jump host with a fresh registration token (runner.yml; the token goes
 #      through a 0600 file that is removed afterwards, --replace takes over the old name)
-#   2. puts back the Key Vault objects the playbooks read (keyvault-prereqs.sh's step)
-#   3. runs site.yml, which authorizes the runner's new SSH key on every VM
+#   2. from cap-01 (a workflow uses the repo variable RUNNER_SSH_PUBLIC_KEY): sets it to the new
+#      runner's public key, so the next VM Terraform builds authorizes it for azureuser
+#   3. puts back the Key Vault objects the playbooks read (keyvault-prereqs.sh's step)
+#   4. runs site.yml, which authorizes the runner's new SSH key on every VM
 # Then queued or new ansible.yml runs work again.
 #   tracks/ansible/lib/runner-register.sh
 #
@@ -48,6 +50,18 @@ an_run ansible-playbook runner.yml -e "@$tok" || {
   exit 1
 }
 rm -f "$tok"
+if grep -qsE 'vars\.RUNNER_SSH_PUBLIC_KEY' .github/workflows/*.yml; then
+  key="$(an_run ansible role_jump -b -m ansible.builtin.command -a "cat /home/gh-runner/.ssh/id_ed25519.pub" 2>/dev/null |
+    grep -m1 -E '^(ssh-ed25519|ssh-rsa) ')" || {
+    echo "runner-register: could not read gh-runner's public key on vm-$PREFIX-jump" >&2
+    exit 1
+  }
+  gh variable set RUNNER_SSH_PUBLIC_KEY -R "$GH_OWNER/$LIVE_REPO" --body "$key" || {
+    echo "runner-register: could not set the repo variable RUNNER_SSH_PUBLIC_KEY" >&2
+    exit 1
+  }
+  echo "runner-register: RUNNER_SSH_PUBLIC_KEY = the new runner's public key (for the VMs Terraform builds next)"
+fi
 an_kv_prereqs || {
   echo "runner-register: the Key Vault prerequisites failed (az login?)" >&2
   exit 1
