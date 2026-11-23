@@ -147,7 +147,7 @@ fake_azure() {
 }
 
 @test "later commands are stubs" {
-  run "$LAB" grade
+  run "$LAB" catchup
   [ "$status" -eq 2 ]
   [[ "$output" == *"not implemented yet"* ]]
 }

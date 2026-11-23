@@ -18,6 +18,8 @@ source "$LAB_ROOT/lib/common.sh"
 source "$LAB_ROOT/lib/config.sh"
 # shellcheck source=lib/tasks.sh
 source "$LAB_ROOT/lib/tasks.sh"
+# shellcheck source=lib/grade.sh
+source "$LAB_ROOT/lib/grade.sh"
 # shellcheck source=lib/progress.sh
 source "$LAB_ROOT/lib/progress.sh"
 
@@ -35,7 +37,8 @@ case "$cmd" in
   hint) cmd_show hint.md "$@" ;;
   solution) cmd_show solution.md "$@" ;;
   status) cmd_status ;;
-  grade | catchup | pause | resume | nuke | cost | selftest)
+  grade) cmd_grade "$@" ;;
+  catchup | pause | resume | nuke | cost | selftest)
     echo "not implemented yet" >&2
     exit 2
     ;;
