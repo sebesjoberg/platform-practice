@@ -17,10 +17,12 @@ fake_tf() { # fake_tf <rc-for-destroy-of-stack-or-empty> stacks...
   local s
   for s in "$@"; do
     fake_response terraform "-chdir=$LIVE/terraform/$s init -input=false" 0
-    fake_response terraform "-chdir=$LIVE/terraform/$s destroy -auto-approve" 0
+    fake_response terraform "-chdir=$LIVE/terraform/$s destroy -auto-approve -input=false" 0
     fake_response terraform "-chdir=$LIVE/terraform/$s apply -auto-approve -input=false" 0
   done
 }
+
+fake_sub() { fake_response az "account show --query id -o tsv" 0 "00000000-0000-0000-0000-000000000000"; }
 
 mark_done() { printf '%s\t1\t2\n' "$1" >>"$LAB_HOME/progress"; }
 
@@ -31,11 +33,11 @@ mark_done() { printf '%s\t1\t2\n' "$1" >>"$LAB_HOME/progress"; }
   [ "$status" -eq 0 ]
   [ -f "$LAB_HOME/paused" ]
   expected="terraform -chdir=$LIVE/terraform/teams/payments init -input=false
-terraform -chdir=$LIVE/terraform/teams/payments destroy -auto-approve
+terraform -chdir=$LIVE/terraform/teams/payments destroy -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/env-dev init -input=false
-terraform -chdir=$LIVE/terraform/env-dev destroy -auto-approve
+terraform -chdir=$LIVE/terraform/env-dev destroy -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/shared init -input=false
-terraform -chdir=$LIVE/terraform/shared destroy -auto-approve"
+terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false"
   [ "$(cat "$FAKE_LOG")" = "$expected" ]
 }
 
@@ -110,6 +112,7 @@ ansible-playbook -i inventory site.yml"
 }
 
 @test "nuke deletes state RG after stacks" {
+  fake_sub
   mkstacks shared landing-zone bootstrap teams/payments
   fake_tf shared landing-zone bootstrap teams/payments
   mark_done tf-01
@@ -120,12 +123,13 @@ ansible-playbook -i inventory site.yml"
   fake_response gh "repo delete learner/acme-platform --yes" 0
   run "$LAB" nuke <<<$'acme\nnuke\ny\nn'
   [ "$status" -eq 0 ]
-  expected="terraform -chdir=$LIVE/terraform/teams/payments init -input=false
-terraform -chdir=$LIVE/terraform/teams/payments destroy -auto-approve
+  expected="az account show --query id -o tsv
+terraform -chdir=$LIVE/terraform/teams/payments init -input=false
+terraform -chdir=$LIVE/terraform/teams/payments destroy -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/shared init -input=false
-terraform -chdir=$LIVE/terraform/shared destroy -auto-approve
+terraform -chdir=$LIVE/terraform/shared destroy -auto-approve -input=false
 terraform -chdir=$LIVE/terraform/landing-zone init -input=false
-terraform -chdir=$LIVE/terraform/landing-zone destroy -auto-approve
+terraform -chdir=$LIVE/terraform/landing-zone destroy -auto-approve -input=false
 az identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv
 az role assignment delete --assignee pid-123 --yes
 az group delete -n rg-acme-tfstate --yes
@@ -138,6 +142,7 @@ gh repo delete learner/acme-platform --yes"
 }
 
 @test "nuke skips role cleanup when identity is missing" {
+  fake_sub
   fake_response az "identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv" 3
   fake_response az "group delete -n rg-acme-tfstate --yes" 0
   run "$LAB" nuke <<<$'acme\nnuke\nn\nn'
@@ -146,9 +151,10 @@ gh repo delete learner/acme-platform --yes"
 }
 
 @test "nuke stops before group delete when a destroy fails" {
+  fake_sub
   mkstacks shared
   fake_response terraform "-chdir=$LIVE/terraform/shared init -input=false" 0
-  fake_response terraform "-chdir=$LIVE/terraform/shared destroy -auto-approve" 1
+  fake_response terraform "-chdir=$LIVE/terraform/shared destroy -auto-approve -input=false" 1
   run "$LAB" nuke <<<$'acme\nnuke\ny\ny'
   [ "$status" -eq 1 ]
   [[ "$output" == *"shared"* ]]
@@ -170,4 +176,72 @@ gh repo delete learner/acme-platform --yes"
   run "$LAB" cost
   [ "$status" -eq 0 ]
   [[ "$output" == *"cost API not available for this subscription type; check the portal"* ]]
+}
+
+@test "cost prints two decimals for whole numbers and empty usage" {
+  start="$(date +%Y-%m-01)"; end="$(date +%F)"
+  fake_response az "consumption usage list --start-date $start --end-date $end -o json" 0     '[{"pretaxCost":5,"currency":"SEK"},{"pretaxCost":7,"currency":"SEK"}]'
+  run "$LAB" cost
+  [ "$output" = "month to date: 12.00 SEK of budget 300" ]
+  fake_response az "consumption usage list --start-date $start --end-date $end -o json" 0 '[]'
+  run "$LAB" cost
+  [ "$output" = "month to date: 0.00 ? of budget 300" ]
+}
+
+@test "failed resume keeps the lab paused" {
+  mkstacks shared
+  : >"$LAB_HOME/paused"
+  fake_response terraform "-chdir=$LIVE/terraform/shared init -input=false" 0
+  fake_response terraform "-chdir=$LIVE/terraform/shared apply -auto-approve -input=false" 1
+  run "$LAB" resume
+  [ "$status" -ne 0 ]
+  [ -f "$LAB_HOME/paused" ]
+}
+
+@test "nuke refuses on the wrong subscription" {
+  mkstacks shared
+  fake_response az "account show --query id -o tsv" 0 "99999999-9999-9999-9999-999999999999"
+  run "$LAB" nuke <<<$'acme
+nuke
+y
+y'
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"az is on subscription 99999999-9999-9999-9999-999999999999, lab is 00000000-0000-0000-0000-000000000000 — az account set -s 00000000-0000-0000-0000-000000000000"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *destroy* ]]
+  [[ "$(cat "$FAKE_LOG")" != *"group delete"* ]]
+}
+
+@test "children do not consume the repo-delete answers" {
+  fake_sub
+  mkdir -p "$TEST_TMP/bin"
+  cat >"$TEST_TMP/bin/terraform" <<'SH'
+#!/usr/bin/env bash
+echo "terraform $*" >>"$FAKE_LOG"
+cat >/dev/null
+SH
+  cat >"$TEST_TMP/bin/az" <<'SH'
+#!/usr/bin/env bash
+echo "az $*" >>"$FAKE_LOG"
+[[ "$1 $2" == "account show" ]] && echo "00000000-0000-0000-0000-000000000000"
+[[ "$1" == identity ]] && exit 3
+cat >/dev/null
+exit 0
+SH
+  cat >"$TEST_TMP/bin/gh" <<'SH'
+#!/usr/bin/env bash
+echo "gh $*" >>"$FAKE_LOG"
+cat >/dev/null
+SH
+  chmod +x "$TEST_TMP/bin/"*
+  export PATH="$TEST_TMP/bin:$PATH"
+  mkstacks shared
+  run "$LAB" nuke <<<$'acme
+nuke
+y
+n
+'
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_LOG")" == *"gh repo delete learner/acme-platform --yes"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *"acme-terraform-modules --yes"* ]]
+  [[ "$(cat "$FAKE_LOG")" == *"destroy -auto-approve -input=false"* ]]
 }
