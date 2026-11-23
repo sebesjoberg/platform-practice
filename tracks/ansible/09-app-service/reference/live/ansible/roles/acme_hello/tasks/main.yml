@@ -1,0 +1,78 @@
+---
+# `is file` runs on the control node: a typo in app_version fails here, before any server changes.
+- name: Check that the release exists in the role
+  ansible.builtin.assert:
+    that: (role_path ~ '/files/releases/' ~ acme_hello_version ~ '/acme_hello.py') is file
+    fail_msg: "no release {{ acme_hello_version }} in roles/acme_hello/files/releases/"
+    quiet: true
+
+- name: Create the service group
+  ansible.builtin.group:
+    name: "{{ acme_hello_user }}"
+    system: true
+
+- name: Create the service user
+  ansible.builtin.user:
+    name: "{{ acme_hello_user }}"
+    group: "{{ acme_hello_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+
+# Releases live side by side; `current` points at the one that runs. A rollback is a symlink
+# switch and a restart, and the old code is still on disk when you need it.
+- name: Create the release directory
+  ansible.builtin.file:
+    path: "{{ acme_hello_home }}/releases/{{ acme_hello_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the release
+  ansible.builtin.copy:
+    src: "releases/{{ acme_hello_version }}/acme_hello.py"
+    dest: "{{ acme_hello_home }}/releases/{{ acme_hello_version }}/acme_hello.py"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart acme-hello
+
+- name: Point current at the release
+  ansible.builtin.file:
+    src: "releases/{{ acme_hello_version }}"
+    dest: "{{ acme_hello_home }}/current"
+    state: link
+  notify: Restart acme-hello
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: acme-hello.service.j2
+    dest: /etc/systemd/system/acme-hello.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart acme-hello
+
+- name: Keep acme-hello enabled and running
+  ansible.builtin.systemd_service:
+    name: acme-hello
+    state: started
+    enabled: true
+
+# A pending restart must happen before the health check, or the check would see the old release.
+- name: Restart now if the release or the unit changed
+  ansible.builtin.meta: flush_handlers
+
+# The deploy only counts when the running code says it is this release and healthy. A release
+# that never gets there (try -e app_version=broken) fails the play here.
+- name: Wait until the app reports healthy with this release
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ acme_hello_port }}/health"
+    return_content: true
+  register: acme_hello_health
+  until: acme_hello_health.status == 200 and (acme_hello_health.content | trim) == 'ok ' ~ acme_hello_version
+  retries: "{{ acme_hello_health_retries }}"
+  delay: 2
+  changed_when: false

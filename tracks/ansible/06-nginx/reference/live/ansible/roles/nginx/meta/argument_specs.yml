@@ -1,0 +1,14 @@
+---
+argument_specs:
+  main:
+    short_description: nginx web server with a role-owned, validated configuration
+    options:
+      nginx_site_env:
+        type: str
+        description: Environment named on the start page (dev, prod).
+      nginx_root:
+        type: path
+        description: Document root of the start page.
+      nginx_worker_connections:
+        type: int
+        description: worker_connections in the events block.

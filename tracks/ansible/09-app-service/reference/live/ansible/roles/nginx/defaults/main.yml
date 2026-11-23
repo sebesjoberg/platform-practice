@@ -1,0 +1,24 @@
+---
+# The environment the start page names (dev, prod). The inventory sets it per environment.
+nginx_site_env: unknown
+
+# Document root of the start page.
+nginx_root: /var/www/acme
+
+nginx_worker_connections: 768
+
+# When set (e.g. http://127.0.0.1:8080), every request goes to that upstream instead of the start
+# page: nginx becomes the app's reverse proxy.
+nginx_proxy_pass: ""
+
+# TLS on 443: off unless the inventory turns it on and passes the bundle. A switch of its own, so
+# deciding whether TLS is on never has to evaluate (look up) the secret itself.
+nginx_tls: false
+
+# PEM bundle: the private key and the certificate (chain), e.g. a Key Vault certificate's secret.
+# Secret: tasks that touch it use no_log.
+nginx_tls_pem: ""
+
+# Where the key (<name>.key, 0600) and the certificate (<name>.crt, 0644) go.
+nginx_tls_dir: /etc/nginx/tls
+nginx_tls_name: acme-web

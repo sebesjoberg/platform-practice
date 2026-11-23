@@ -1,0 +1,14 @@
+---
+# How Ansible logs in to every lab VM: tf-25 created the admin user and authorized this key.
+ansible_user: azureuser
+ansible_ssh_private_key_file: ~/.ssh/{{PREFIX}}_lab
+
+# Role base: the ops user logs in with the same lab key (the public half; the private key never
+# leaves your machine).
+base_ops_authorized_keys:
+  - "{{ lookup('ansible.builtin.file', '~/.ssh/{{PREFIX}}_lab.pub') }}"
+
+# How the Key Vault lookups authenticate: `cli` is your az login on this machine. CI on the jump
+# host (an-16) runs with -e acme_kv_auth_source=msi: the VM's managed identity, which tf-25 made
+# Key Vault Secrets User on both vaults. The lookups only try the MSI endpoint when this says msi.
+acme_kv_auth_source: cli

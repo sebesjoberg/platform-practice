@@ -1,0 +1,8 @@
+---
+# The environment the start page names (dev, prod). The inventory sets it per environment.
+nginx_site_env: unknown
+
+# Document root of the start page.
+nginx_root: /var/www/acme
+
+nginx_worker_connections: 768

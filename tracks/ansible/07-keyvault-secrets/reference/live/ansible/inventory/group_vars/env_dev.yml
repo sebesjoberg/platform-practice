@@ -1,0 +1,7 @@
+---
+# What differs per environment lives in env_<name>.yml, next to the env_<name> group the inventory
+# builds from the env tag.
+acme_env: dev
+
+# The environment's Key Vault (tf-21). Its name is not a secret; its contents are.
+acme_kv_url: https://kv-{{PREFIX}}-dev-{{SUFFIX}}.vault.azure.net

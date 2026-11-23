@@ -1,0 +1,37 @@
+# {{ ansible_managed }} (role haproxy)
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    chroot /var/lib/haproxy
+    # Runtime API: drain/enable servers, change weights (an-11). Level admin, so the socket is
+    # for root and the members of its group only (mode 660; the master creates it as root).
+    stats socket {{ haproxy_admin_socket }} mode 660 group {{ haproxy_admin_group }} level admin expose-fd listeners
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log global
+    mode http
+    option httplog
+    option dontlognull
+    option forwardfor
+    option redispatch
+    retries 2
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+
+frontend http
+    bind {{ haproxy_bind }}:{{ haproxy_frontend_port }}
+    default_backend {{ haproxy_backend_name }}
+
+backend {{ haproxy_backend_name }}
+    balance roundrobin
+    option httpchk GET {{ haproxy_health_path }}
+    http-check expect status 200
+    default-server inter 2s fall 2 rise 2
+{% for name, address in haproxy_backends | dictsort %}
+    server {{ name }} {{ address }}:{{ haproxy_backend_port }} check
+{% endfor %}

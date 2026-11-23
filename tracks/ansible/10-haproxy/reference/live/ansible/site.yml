@@ -1,0 +1,24 @@
+---
+# The whole fleet, in order.
+#   ansible-playbook site.yml
+- name: Baseline every VM
+  hosts: all
+  become: true
+  roles:
+    - role: base
+
+# The app's configuration, then the app (it waits for its own health), then nginx in front of it.
+- name: Web servers
+  hosts: role_web
+  become: true
+  roles:
+    - role: app_env
+    - role: acme_hello
+    - role: nginx
+
+# After the web servers, so HAProxy's first health checks find them serving.
+- name: Load balancer
+  hosts: role_jump
+  become: true
+  roles:
+    - role: haproxy

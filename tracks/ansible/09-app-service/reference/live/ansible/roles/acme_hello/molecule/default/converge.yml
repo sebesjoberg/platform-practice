@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    acme_hello_env: molecule
+    # Unprivileged container: no mount namespaces for systemd (see molecule.yml).
+    acme_hello_sandbox: false
+  roles:
+    - role: acme_hello

@@ -1,0 +1,43 @@
+---
+# The web VMs have no public IP: every SSH connection to them goes through the jump host. Its
+# public IP comes from the dynamic inventory at run time (the jump host's hostvars), so a rebuilt
+# jump host with a new IP needs no edit. The inner ssh gets the same key and host-key options as
+# the outer one: ProxyCommand doesn't inherit them.
+jump_host_ip: "{{ hostvars[groups['role_jump'] | first]['public_ipv4_address'] | first }}"
+ansible_ssh_common_args: >-
+  -o ProxyCommand="ssh -W %h:%p -q
+  -i {{ ansible_ssh_private_key_file }} -o IdentitiesOnly=yes
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+  {{ ansible_user }}@{{ jump_host_ip }}"
+
+# The app release the web servers run: a directory in roles/acme_hello/files/releases. This line is
+# the source of truth: a deploy or rollback changes it (reviewed, merged, applied). -e app_version=
+# is for one-off experiments only (e.g. the broken release); the next plain site.yml run, the
+# graders' included, deploys this version again.
+app_version: "1.0.0"
+
+# Role acme_hello.
+acme_hello_version: "{{ app_version }}"
+acme_hello_env: "{{ acme_env }}"
+
+# Role nginx: the start page names the server's environment (env_dev.yml); every request goes to
+# the app (127.0.0.1:8080, acme_hello_port).
+nginx_site_env: "{{ acme_env }}"
+nginx_proxy_pass: http://127.0.0.1:8080
+
+# Role nginx: HTTPS with the certificate web-tls from the environment's Key Vault. A certificate's
+# private key lives in the secret of the same name (PEM content type: key, then certificate).
+nginx_tls: true
+nginx_tls_pem: >-
+  {{ lookup('azure.azcollection.azure_keyvault_secret', 'web-tls',
+  vault_url=acme_kv_url, auth_source=acme_kv_auth_source,
+  use_msi=(acme_kv_auth_source == 'msi')) }}
+
+# Role app_env: /etc/acme/app.env. Values are looked up in the environment's Key Vault on the
+# control node when the role uses them (variables are templated lazily): the repo holds only the
+# secret's name. The role writes them with no_log.
+app_env_vars:
+  APP_GREETING: >-
+    {{ lookup('azure.azcollection.azure_keyvault_secret', 'app-greeting',
+    vault_url=acme_kv_url, auth_source=acme_kv_auth_source,
+    use_msi=(acme_kv_auth_source == 'msi')) }}

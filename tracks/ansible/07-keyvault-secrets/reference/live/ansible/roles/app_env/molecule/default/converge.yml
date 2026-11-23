@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # Stubs for what the inventory looks up in Key Vault on the real servers.
+    app_env_vars:
+      APP_GREETING: molecule-stub-not-a-secret
+      APP_MODE: test
+  roles:
+    - role: app_env

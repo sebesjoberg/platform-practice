@@ -1,0 +1,4 @@
+---
+# What differs per environment lives in env_<name>.yml, next to the env_<name> group the inventory
+# builds from the env tag.
+acme_env: dev

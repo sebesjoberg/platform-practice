@@ -1,0 +1,7 @@
+---
+# Reload, not restart: workers finish their requests. The configuration was validated before it
+# was written.
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded

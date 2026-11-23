@@ -1,0 +1,23 @@
+---
+# haproxy_backends (required, no default): server name -> address. The inventory builds it from
+# the web servers' private IPs.
+
+# The frontend: every address of the host, port 80. The NSG keeps it off the internet: only SSH
+# from your IP reaches the jump host from outside.
+haproxy_bind: "*"
+haproxy_frontend_port: 80
+
+haproxy_backend_name: web
+haproxy_backend_port: 80
+
+# HTTP health check per server; a server that fails it twice leaves the pool.
+haproxy_health_path: /health
+
+# The Runtime API (drain, enable, weights) at level admin: root and the members of
+# haproxy_admin_group may use it (mode 660).
+haproxy_admin_socket: /run/haproxy/admin.sock
+haproxy_admin_group: haproxy
+
+# Ubuntu's unit gives HAProxy /dev/log in its chroot through a mount namespace. False only where
+# systemd may not create one (an unprivileged container, Molecule): a drop-in then resets it.
+haproxy_mount_namespace: true

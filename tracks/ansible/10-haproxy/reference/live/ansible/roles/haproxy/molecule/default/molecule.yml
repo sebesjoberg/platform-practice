@@ -1,0 +1,29 @@
+---
+# Molecule scenario for role haproxy: the systemd-capable container of the other roles. prepare.yml
+# starts two fake web servers on loopback addresses, so verify.yml can watch HAProxy balance and
+# health-check for real.
+#   cd ansible/roles/haproxy && molecule test
+driver:
+  name: docker
+
+platforms:
+  - name: haproxy-noble
+    image: ubuntu:24.04
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    command: /lib/systemd/systemd
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../collections:${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}
+
+verifier:
+  name: ansible

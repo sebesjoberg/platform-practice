@@ -1,0 +1,7 @@
+---
+# A reload starts new workers with the new configuration and lets the old ones finish their
+# connections (master-worker mode, as Ubuntu's unit runs it).
+- name: Reload haproxy
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: reloaded

@@ -1,0 +1,14 @@
+---
+# The whole fleet, in order. Later tasks add plays for the web servers and the load balancer.
+#   ansible-playbook site.yml
+- name: Baseline every VM
+  hosts: all
+  become: true
+  roles:
+    - role: base
+
+- name: Web servers
+  hosts: role_web
+  become: true
+  roles:
+    - role: nginx
