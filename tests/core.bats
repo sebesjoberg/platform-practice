@@ -151,3 +151,39 @@ fake_azure() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"not implemented yet"* ]]
 }
+
+@test "init rejects unsafe config values" {
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag 'Sam "S"'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"OWNER_TAG"* ]]
+  [ ! -e "$LAB_HOME/config.env" ]
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir '$(touch /tmp/pwned)'
+  [ "$status" -ne 0 ]
+  [ ! -e "$LAB_HOME/config.env" ]
+}
+
+@test "re-init with new prefix re-derives repos and dirs" {
+  fake_azure
+  "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir "$TEST_TMP/a/demo-platform"
+  s1=$(grep ^SUFFIX "$LAB_HOME/config.env")
+  run "$LAB" init --prefix other --live-dir "$TEST_TMP/b/other-platform"
+  [ "$status" -eq 0 ]
+  [ "$s1" = "$(grep ^SUFFIX "$LAB_HOME/config.env")" ]
+  grep -qx 'LIVE_REPO="other-platform"' "$LAB_HOME/config.env"
+  grep -qx 'MODULES_REPO="other-terraform-modules"' "$LAB_HOME/config.env"
+  grep -qx "MODULES_DIR=\"$TEST_TMP/b/other-terraform-modules\"" "$LAB_HOME/config.env"
+}
+
+@test "CRLF task.md is parsed" {
+  mkdir -p "$TEST_TMP/crlf/demo/01-x"
+  printf -- '---\r\nid: crlf-01\r\ntitle: Crlf\r\ntarget_minutes: 5\r\nrequires: []\r\n---\r\n# Body line\r\n' >"$TEST_TMP/crlf/demo/01-x/task.md"
+  source "$REPO_ROOT/lib/common.sh"
+  source "$REPO_ROOT/lib/tasks.sh"
+  TRACKS_DIR="$TEST_TMP/crlf"
+  [ "$(task_meta crlf-01 title)" = "Crlf" ]
+  TRACKS_DIR="$TEST_TMP/crlf" run "$LAB" task crlf-01
+  [[ "$output" == *"# Body line"* ]]
+  [[ "$output" != *"title:"* ]]
+}

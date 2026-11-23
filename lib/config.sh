@@ -12,10 +12,14 @@ load_config() {
 # write_config: writes config.env from the current shell variables.
 write_config() {
   mkdir -p "$LAB_HOME"
-  local key
+  local key keys="PREFIX SUFFIX LOCATION SUBSCRIPTION_ID TENANT_ID GH_OWNER LIVE_REPO MODULES_REPO LIVE_DIR MODULES_DIR LEARNER_IP OWNER_TAG"
+  # config.env is sourced: refuse anything that could break quoting or run code.
+  for key in $keys; do
+    [[ "${!key}" =~ ^[A-Za-z0-9._/~@:+\ -]*$ ]] ||
+      die 2 "init: unsafe value for $key (allowed: A-Za-z0-9 . _ / ~ @ : + space -)"
+  done
   {
-    for key in PREFIX SUFFIX LOCATION SUBSCRIPTION_ID TENANT_ID GH_OWNER LIVE_REPO \
-      MODULES_REPO LIVE_DIR MODULES_DIR LEARNER_IP OWNER_TAG; do
+    for key in $keys; do
       printf '%s="%s"\n' "$key" "${!key}"
     done
   } >"$LAB_HOME/config.env.tmp"
@@ -67,11 +71,15 @@ cmd_init() {
     return 0
   fi
 
-  # Keep earlier values (notably SUFFIX) on re-init.
+  # Re-init: SUFFIX survives; inputs fall back to old values; derived values are recomputed.
+  local old_prefix=""
   if [[ -f "$LAB_HOME/config.env" ]]; then
     # shellcheck disable=SC1091
     source "$LAB_HOME/config.env"
+    old_prefix=${PREFIX:-}
   fi
+  local old_live_dir=${LIVE_DIR:-}
+  unset LIVE_REPO MODULES_REPO MODULES_DIR LIVE_DIR
 
   PREFIX="${prefix:-${PREFIX:-}}"
   ask PREFIX --prefix "Resource prefix (2-6 lowercase letters)" acme
@@ -87,10 +95,17 @@ cmd_init() {
   OWNER_TAG="${tag:-${OWNER_TAG:-}}"
   ask OWNER_TAG --owner-tag "Owner tag (your name/alias)" ""
 
-  LIVE_REPO="${LIVE_REPO:-${PREFIX}-platform}"
-  MODULES_REPO="${MODULES_REPO:-${PREFIX}-terraform-modules}"
-  LIVE_DIR="${live_dir:-${LIVE_DIR:-$HOME/acme/$LIVE_REPO}}"
-  MODULES_DIR="${MODULES_DIR:-$(dirname "$LIVE_DIR")/$MODULES_REPO}"
+  LIVE_REPO="${PREFIX}-platform"
+  MODULES_REPO="${PREFIX}-terraform-modules"
+  if [[ -n "$live_dir" ]]; then
+    LIVE_DIR=$live_dir
+  elif [[ -n "$old_live_dir" && "$old_prefix" == "$PREFIX" ]]; then
+    LIVE_DIR=$old_live_dir
+  else
+    LIVE_DIR="$HOME/acme/$LIVE_REPO"
+  fi
+  # shellcheck disable=SC2034 # read in write_config
+  MODULES_DIR="$(dirname "$LIVE_DIR")/$MODULES_REPO"
   # shellcheck disable=SC2034 # read via indirect expansion in write_config
   LOCATION=swedencentral
   SUFFIX="${SUFFIX:-$(random_suffix)}"

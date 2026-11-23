@@ -4,6 +4,7 @@
 # fm_get <file> <key>: value of a front matter key.
 fm_get() {
   awk -v k="$2" '
+    { sub(/\r$/, "") }
     NR==1 && $0!="---" {exit}
     NR>1 && $0=="---" {exit}
     NR>1 { i=index($0, ":"); if (i && substr($0,1,i-1)==k) { v=substr($0,i+1); sub(/^[ \t]+/,"",v); sub(/\r$/,"",v); print v; exit } }
@@ -57,7 +58,7 @@ task_requires() {
 
 # print_body <file>: a markdown file without its front matter.
 print_body() {
-  awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$1"
+  awk '{ sub(/\r$/, "") } NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {fm=0; next} !fm' "$1"
 }
 
 resolve_id() { # resolve_id [id]: the given id or the current task
