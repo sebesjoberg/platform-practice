@@ -11,8 +11,10 @@ Traps:
   jump host itself (the NSG allows SSH from your IP only), there is no `~/.ssh/{{PREFIX}}_lab` on
   it, and a ProxyCommand through itself makes no sense. Extra variables (`-e @ci/runner.yml`) beat
   everything in the inventory and are templated per host:
-  `ansible_host: "{{ private_ipv4_addresses | first }}"`, `ansible_user: ops`, the runner's key,
-  and a switch that turns off the jump hop in `group_vars/role_web.yml`.
+  `ansible_host: "{{ private_ipv4_addresses | default([inventory_hostname]) | first }}"`,
+  `ansible_user: ops`, the runner's key, and a switch that turns off the jump hop in
+  `group_vars/role_web.yml`. Extra variables reach *every* host a playbook touches, `localhost`
+  too (a play that writes a file on the controller): without the `default` the run fails there.
 - **`base` manages `ops`' keys exclusively.** If CI computed a different key list than your
   laptop, every run would flip it. On the runner the lab key's public half comes from the repo
   variable `SSH_PUBLIC_KEY` (tf-25): `lookup('ansible.builtin.env', 'SSH_PUBLIC_KEY')`.

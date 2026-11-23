@@ -326,6 +326,29 @@ an_collection_fixture() {
   [[ "$output" == *"pins acme.platform-1.2.3, but the reference collection"*"is version 1.0.0"* ]]
 }
 
+@test "validate-reference templates CI's connection profile for localhost" {
+  ansible_fixture
+  mkdir -p "$AN/ci"
+  printf -- '---\nansible_user: ops\n' >"$AN/ci/runner.yml"
+  # shellcheck disable=SC2016
+  printf '#!/usr/bin/env bash\necho "ansible $*" >>"$SHIM_LOG"\n' >"$VALIDATE_SHIM_DIR/ansible"
+  chmod +x "$VALIDATE_SHIM_DIR/ansible"
+  run "$VALIDATE" an-01 --no-molecule
+  [ "$status" -eq 0 ]
+  grep -q 'ansible localhost -i localhost, -c local -e @ci/runner.yml -m ansible.builtin.ping' "$SHIM_LOG"
+}
+
+@test "validate-reference fails when CI's connection profile doesn't template for localhost" {
+  ansible_fixture
+  mkdir -p "$AN/ci"
+  printf -- '---\nansible_host: x\n' >"$AN/ci/runner.yml"
+  printf '#!/usr/bin/env bash\necho "Error processing keyword remote_addr" >&2\nexit 2\n' >"$VALIDATE_SHIM_DIR/ansible"
+  chmod +x "$VALIDATE_SHIM_DIR/ansible"
+  run "$VALIDATE" an-01 --no-molecule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL  ci/runner.yml templates on localhost"* ]]
+}
+
 @test "validate-reference rejects terraform tests without mock_provider" {
   vr_setup
   command -v tflint >/dev/null || skip "tflint not on PATH"

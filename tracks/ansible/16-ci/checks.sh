@@ -68,15 +68,23 @@ an16_pr_check_or_catchup() {
     jq -e '.conclusion == "success" and (.message | startswith("catchup:"))' >/dev/null
 }
 
-# an16_no_azure_secrets: the repo holds no Azure, SSH or runner credentials as secrets (the
-# Terraform track's LEARNER_IP and BUDGET_EMAIL are values, not credentials).
-an16_no_azure_secrets() {
-  local names
-  names="$(gh api "repos/$AN16_REPO/actions/secrets" --jq '.secrets[].name')" || return 1
-  ! grep -qiE "AZURE|ARM_|CLIENT_SECRET|CREDENTIAL|SSH|PRIVATE|RUNNER|ANSIBLE" <<<"$names"
+# an16_only_tf_secrets: the repo's secrets (Actions, every environment's, Dependabot's) are only
+# the Terraform track's two values, LEARNER_IP and BUDGET_EMAIL (tf-12, tf-25, tf-30), which are
+# personal values masked in public logs, not credentials. Anything else fails: the runner needs
+# no secret at all. Prints the names that aren't allowed.
+an16_only_tf_secrets() {
+  local names envs e extra
+  names="$(gh api "repos/$AN16_REPO/actions/secrets?per_page=100" --jq '.secrets[].name')" || return 1
+  names+=$'\n'"$(gh api "repos/$AN16_REPO/dependabot/secrets?per_page=100" --jq '.secrets[].name')" || return 1
+  envs="$(gh api "repos/$AN16_REPO/environments?per_page=100" --jq '.environments[].name')" || return 1
+  for e in $envs; do
+    names+=$'\n'"$(gh api "repos/$AN16_REPO/environments/$e/secrets?per_page=100" --jq '.secrets[].name')" || return 1
+  done
+  extra="$(grep -vxE "LEARNER_IP|BUDGET_EMAIL|" <<<"$names" | sort -u)"
+  [[ -z "$extra" ]] || { echo "secrets other than LEARNER_IP and BUDGET_EMAIL: $(paste -sd, - <<<"$extra")"; return 1; }
 }
 export -f an16_triggers an16_hosted_jobs an16_runner_jobs an16_job_roles an16_msi_no_secrets \
-  an16_pr_check_or_catchup an16_no_azure_secrets
+  an16_pr_check_or_catchup an16_only_tf_secrets
 
 check_code "ansible.yml: pull_request, push to main, schedule, workflow_dispatch with input env" \
   'an16_triggers' \
@@ -114,6 +122,6 @@ check "a drift check ran green on the runner (schedule, or gh workflow run ansib
   'an_wf_job_succeeded "$AN16_REPO" "branch=main" drift 1' \
   "gh workflow run ansible.yml -f task=drift: the drift job must succeed (no drift); with drift it fails and opens an issue labelled ansible-drift"
 
-check "the repo holds no Azure, SSH or runner credentials as secrets" \
-  'an16_no_azure_secrets' \
-  "gh secret list -R $AN16_REPO: the runner authenticates with the jump host's managed identity and its own SSH key; delete any AZURE_*/SSH/credential secret"
+check "the repo has no secrets besides the Terraform track's LEARNER_IP and BUDGET_EMAIL (Actions, environments, Dependabot)" \
+  'an16_only_tf_secrets' \
+  "gh secret list -R $AN16_REPO (and --env <name>, --app dependabot): the runner authenticates with the jump host's managed identity and its own SSH key; delete every secret other than LEARNER_IP and BUDGET_EMAIL"

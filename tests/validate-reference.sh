@@ -268,6 +268,14 @@ if [[ -d "$AN" ]]; then
       is_playbook "$f" && echo "$f"
     done
   )
+  # CI's connection profile (an-16) goes to every runner job as extra vars, and extra vars apply
+  # to localhost plays too (compliance.yml writes its report there, an-20): every connection
+  # variable in it must template for a host without Azure host variables.
+  if [[ -f "$AN/ci/runner.yml" ]]; then
+    command -v ansible >/dev/null || die 3 "ansible is required (scripts/install-dev-tools.sh)"
+    step "ci/runner.yml templates on localhost" "$AN" env SSH_PUBLIC_KEY="ssh-ed25519 AAAA ci" \
+      ansible localhost -i localhost, -c local -e @ci/runner.yml -m ansible.builtin.ping
+  fi
   if [[ $molecule -eq 1 ]]; then
     command -v molecule >/dev/null || die 3 "molecule is required (scripts/install-dev-tools.sh)"
     while IFS= read -r m; do

@@ -60,17 +60,13 @@ an17_cache_filled() {
 }
 export -f an17_cfg an17_fact_dir an17_fact_cache an17_ssh an17_no_cached_secrets an17_cache_filled
 
-check_code "fact caching: jsonfile in a gitignored directory inside ansible/, gathering = smart" \
-  'an17_fact_cache' \
-  "in ansible.cfg [defaults]: gathering = smart, fact_caching = ansible.builtin.jsonfile, fact_caching_connection = ./.facts (and .facts/ in ansible/.gitignore), fact_caching_timeout"
+check_code "fact caching: jsonfile in a gitignored directory inside ansible/, gathering = smart, no cacheable set_fact" \
+  'an17_fact_cache && an17_no_cached_secrets' \
+  "in ansible.cfg [defaults]: gathering = smart, fact_caching = ansible.builtin.jsonfile, fact_caching_connection = ./.facts (and .facts/ in ansible/.gitignore), fact_caching_timeout; and no set_fact with cacheable: true (those values, nginx's TLS bundle say, would land in the cache files)"
 
 check_code "SSH: pipelining on, ControlPersist and IdentitiesOnly=yes kept in ssh_args" \
   'an17_ssh' \
   "in ansible.cfg [ssh_connection]: pipelining = True, and keep -o ControlPersist=... and -o IdentitiesOnly=yes in ssh_args (it replaces Ansible's defaults)"
-
-check_code "no set_fact is cacheable (secrets stay out of the fact cache)" \
-  'an17_no_cached_secrets' \
-  "remove cacheable: true from set_fact tasks: with fact caching on, those values (nginx's TLS bundle, say) would be written to the cache files"
 
 # Runs the learner's site.yml once more (documented probe); it must still change nothing, and it
 # fills the fact cache.

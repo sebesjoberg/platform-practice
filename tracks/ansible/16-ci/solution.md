@@ -13,7 +13,7 @@ for Azure. No secrets: the identity and the runner's own key are the credentials
 
 ```yaml
 ---
-ansible_host: "{{ private_ipv4_addresses | first }}"
+ansible_host: "{{ private_ipv4_addresses | default([inventory_hostname]) | first }}"
 ansible_user: ops
 ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 acme_ssh_via_jump: false
@@ -139,7 +139,7 @@ gh pr checks --watch                  # lint, molecule (6), check: the diff is i
 gh pr merge --squash --delete-branch
 gh run watch "$(gh run list --workflow ansible.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId')"
 gh workflow run ansible.yml -f task=drift && sleep 10 && gh run watch "$(gh run list --workflow ansible.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
-gh secret list                        # nothing Azure or SSH
+gh secret list; gh secret list --env prod; gh secret list --app dependabot   # only LEARNER_IP, BUDGET_EMAIL
 ```
 
 The first runner job takes a few minutes longer: it builds the toolchain (the Azure SDK).

@@ -98,6 +98,11 @@ drift job's `if` narrowed to `github.event.schedule == '41 5 * * 1-5'`, and:
           retention-days: 90
 ```
 
+The job passes `-e @ci/runner.yml`, whose extra variables apply to the `localhost` play too: its
+`ansible_host` must template without Azure host variables, which an-16's profile does with
+`private_ipv4_addresses | default([inventory_hostname]) | first`. Try it locally the way CI runs
+it: `SSH_PUBLIC_KEY=x ansible localhost -i localhost, -c local -e @ci/runner.yml -m ping`.
+
 ## Commands
 
 ```bash

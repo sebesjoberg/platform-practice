@@ -58,9 +58,9 @@ an15_runner_on_vm() {
 }
 export -f an15_role an15_released an15_base_gets_runner_key an15_no_token_in_repo an15_runner_online an15_runner_on_vm
 
-check_code "role gh_runner: registers with config.sh (labels incl. acme-jump, token with no_log), own ed25519 key" \
-  'an15_role' \
-  "add role gh_runner to the collection: user gh-runner with generate_ssh_key (ed25519), the runner unpacked, ./config.sh --unattended --url ... --token \"{{ gh_runner_token }}\" --labels acme-jump with no_log: true, svc.sh install"
+check_code "role gh_runner: registers with config.sh (labels incl. acme-jump, token with no_log), own ed25519 key; no token in the repo" \
+  'an15_role && an15_no_token_in_repo' \
+  "add role gh_runner to the collection: user gh-runner with generate_ssh_key (ed25519), the runner unpacked, ./config.sh --unattended --url ... --token \"{{ gh_runner_token }}\" --labels acme-jump with no_log: true, svc.sh install. The token itself is a secret (and expires in an hour): pass it with -e @<file outside the repo>, never commit it"
 
 check_code "role gh_runner has a Molecule scenario (docker, converge, verify, idempotence kept)" \
   'an_molecule_scenario gh_runner' \
@@ -77,10 +77,6 @@ check_code "the pinned collection release is the source's version and contains g
 check_code "site.yml reads the runner's public key on the jump host (slurp delegated to role_jump) for role base" \
   'an15_base_gets_runner_key' \
   "in site.yml's baseline play: a pre_task that slurps /home/gh-runner/.ssh/id_ed25519.pub with delegate_to: \"{{ groups['role_jump'] | first }}\" and run_once, and base_ops_authorized_keys that adds it when it exists"
-
-check_code "no runner registration token in the repo" \
-  'an15_no_token_in_repo' \
-  "a registration token is a secret (and expires in an hour): pass it with -e @<file outside the repo>, never commit it"
 
 check "GitHub lists the runner vm-$PREFIX-jump online, with the labels self-hosted and acme-jump" \
   'an15_runner_online' \

@@ -32,8 +32,9 @@ This task gets 25 minutes: one workflow with five jobs, and a connection profile
       pull requests from forks never reach the runner.
 - [ ] Azure on the runner = the VM's managed identity: `ANSIBLE_AZURE_AUTH_SOURCE=msi` for the
       inventory and `-e acme_kv_auth_source=msi` for the Key Vault lookups. The workflow uses no
-      `secrets.*` (`github.token` for the issue is fine), and the repo gets no Azure or SSH
-      secrets.
+      `secrets.*` (`github.token` for the issue is fine), and the repo gets no new secret at all:
+      its only secrets stay the Terraform track's `LEARNER_IP` and `BUDGET_EMAIL` (repo,
+      environments and Dependabot alike).
 - [ ] The runner connects differently from your laptop: it *is* the jump host. A connection
       profile (e.g. `ansible/ci/runner.yml`, passed with `-e @...`) makes it reach every VM by
       private IP without the jump hop, as `ops` with `gh-runner`'s key, and gives role `base` the
