@@ -79,9 +79,16 @@ of 300 kr; `./lab.sh cost` shows where you are.
   before replacing (`--yes` doesn't).
 - Then it does what files can't: GitHub settings, pipeline runs (it waits for them), Azure-side
   steps. The replayed tasks count as done.
+- `catchup tf-XX` replaces everything except `ansible/` and the Ansible workflows, so your
+  Ansible work survives when you interleave the tracks.
 - `catchup an-XX` replaces only `ansible/` and the Ansible workflow, and replays the Terraform
-  reference only if the tf-25 state is missing. It never rolls back later Terraform work.
+  reference only if the tf-25 checks fail. It never rolls back later Terraform work: once you are
+  past tf-25 (a tf-26+ task done, `terraform/observability` or `terraform/teams` exists) it stops
+  and shows the failing tf-25 checks instead.
 - `catchup cap-01` replaces everything.
+- Files your `.gitignore` ignores (a `.env`, `ansible/.venv`) stay on disk and are never
+  committed; catchup keeps them ignored in `.git/info/exclude`.
+- Not while the lab is paused: `./lab.sh resume` first (`next` refuses too).
 
 Ansible only? `./lab.sh catchup tf-25`, then `./lab.sh next ansible`.
 

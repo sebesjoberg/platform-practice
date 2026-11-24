@@ -34,3 +34,10 @@ need() {
       die 3 "$tool is the Windows build; install the Linux one: $hint"
   done
 }
+
+# require_not_paused: exit 7 while the lab is paused ($LAB_HOME/paused). Catchup and next would
+# rebuild paused stacks (tf-05's catchup hook dispatches stacks=all; setup.sh files snapshot or
+# change Azure) while the marker stays: a cost leak, and resume would then not know what runs.
+require_not_paused() {
+  [[ ! -e "$LAB_HOME/paused" ]] || die 7 "lab is paused — ./lab.sh resume first"
+}

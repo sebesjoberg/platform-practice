@@ -91,6 +91,7 @@ cmd_show() { # cmd_show <file> [id]
 
 cmd_next() {
   local track="${1:-}" id req d cur
+  require_not_paused
   if [[ -z "$track" ]]; then
     cur="$(current_task)"
     if [[ -n "$cur" ]] && task_dir "$cur" >/dev/null; then track="$(task_track "$cur")"; else track=terraform; fi

@@ -35,17 +35,21 @@ grade_task() {
   [[ "$GRADE_PASSED" -eq "$GRADE_TOTAL" ]]
 }
 
-# grade_quiet <id>: run the task checks with output suppressed. Returns the grade status:
-# 0 all pass, 1 some check fails, anything else = cannot grade (e.g. 4 not logged in).
-# No progress side effects, no timing. Never exits the caller.
-grade_quiet() {
-  local id=$1
+# grade_capture <id> <file>: run the task checks with their output (and any error message)
+# written to <file>. Returns the grade status: 0 all pass, 1 some check fails (or the grader
+# stopped with status 1, e.g. checks.sh failed to load: no FAIL line then), anything else =
+# cannot grade (e.g. 4 not logged in). No progress side effects, no timing. Never exits the caller.
+grade_capture() {
+  local id=$1 log=$2
   (
     GRADE_TMP="$(mktemp -d)"
     trap 'rm -rf "$GRADE_TMP"' EXIT
     grade_task "$id" normal
-  ) >/dev/null 2>&1
+  ) >"$log" 2>&1
 }
+
+# grade_quiet <id>: grade_capture with the output suppressed.
+grade_quiet() { grade_capture "$1" /dev/null; }
 
 # grade_order: finished task ids in track order (terraform, ansible, capstone, others alphabetically).
 grade_order() {

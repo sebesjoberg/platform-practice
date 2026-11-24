@@ -102,15 +102,68 @@ _require_ready() {
   fi
 }
 
-# _replace_repo <dir> <refdir> <id> <scope> <yes>: scope = all | ansible
-_replace_repo() {
-  local dir=$1 ref=$2 id=$3 scope=$4 yes=$5 ts base n=1 reply f lease
-  local -a gid=()
+# _ansible_path <path>: the path (relative to the repo root) is part of the Ansible track:
+# ansible/ and the Ansible workflows .github/workflows/ansible*.yml.
+_ansible_path() {
+  case "$1" in
+    ansible | ansible/*) return 0 ;;
+    .github/workflows/ansible*.yml) [[ "${1#.github/workflows/}" != */* ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+# _in_scope <scope> <path>: catchup with that scope replaces the path. all: everything (cap-01,
+# the modules repo); ansible: the Ansible track only; terraform: everything but the Ansible track,
+# so a learner who interleaves the tracks keeps their Ansible work.
+_in_scope() {
+  case "$1" in
+    all) return 0 ;;
+    ansible) _ansible_path "$2" ;;
+    terraform) ! _ansible_path "$2" ;;
+    *) return 1 ;;
+  esac
+}
+
+# _ref_list <refdir> <scope> <out>: the reference files in scope, NUL-separated relative paths.
+_ref_list() {
+  local ref=$1 scope=$2 out=$3 p
+  : >"$out"
+  [[ -d "$ref" ]] || return 0
+  while IFS= read -r -d '' p; do
+    p=${p#./}
+    if _in_scope "$scope" "$p"; then printf '%s\0' "$p" >>"$out"; fi
+  done < <(cd "$ref" && find . -mindepth 1 \( -type f -o -type l \) -print0 | sort -z)
+  return 0
+}
+
+# _keep_ignored <dir>: what the learner's .gitignore files ignore right now (a .env, ansible/.venv,
+# fact caches...) stays ignored once catchup has swapped those files for the reference ones: the
+# paths go to .git/info/exclude, anchored. They stay on disk and are never staged.
+_keep_ignored() {
+  local dir=$1 ex p
+  local -a add=()
+  while IFS= read -r -d '' p; do
+    p="/$(printf '%s' "$p" | sed 's/[][*?\]/\&/g')"
+    add+=("$p")
+  done < <(git -C "$dir" ls-files -z -o -i --exclude-standard --directory)
+  [[ ${#add[@]} -gt 0 ]] || return 0
+  ex="$(git -C "$dir" rev-parse --git-path info/exclude)"
+  [[ "$ex" == /* ]] || ex="$dir/$ex"
+  mkdir -p "$(dirname "$ex")"
+  touch "$ex"
+  grep -qxF '# kept ignored by ./lab.sh catchup' "$ex" || echo '# kept ignored by ./lab.sh catchup' >>"$ex"
+  for p in "${add[@]}"; do
+    grep -qxF -- "$p" "$ex" || printf '%s\n' "$p" >>"$ex"
+  done
+}
+
+BACKUP_BRANCH=""
+
+# _backup_repo <dir>: save main as my-work/<timestamp> on origin and locally. Sets BACKUP_BRANCH
+# and VERIFIED_SHA (the lease for the push that replaces main).
+_backup_repo() {
+  local dir=$1 ts base n=1
   _require_ready "$dir"
-  lease="$VERIFIED_SHA"
-  if [[ -z "$(git -C "$dir" config user.email || true)" ]]; then
-    gid=(-c user.name=platform-practice -c user.email=lab@localhost)
-  fi
   base="$(date +%Y%m%d-%H%M%S)"
   ts=$base
   while git -C "$dir" rev-parse --verify -q "refs/heads/my-work/$ts" >/dev/null; do
@@ -119,30 +172,37 @@ _replace_repo() {
   done
   git -C "$dir" push -q origin "main:refs/heads/my-work/$ts" || die 1 "backup push failed in $dir"
   git -C "$dir" branch -q "my-work/$ts" main
+  BACKUP_BRANCH="my-work/$ts"
   echo "saved your work as my-work/$ts in $(basename "$dir")"
-  if [[ "$yes" -ne 1 ]]; then
-    printf 'Replace main in %s with the reference state of %s? [y/N] ' "$(basename "$dir")" "$id" >&2
-    reply=""
-    read -r reply || true
-    [[ "$reply" == y || "$reply" == Y ]] || die 6 "aborted; nothing replaced (backup is my-work/$ts)"
+}
+
+# _replace_repo <dir> <refdir> <id> <scope> <lease>: scope = all | terraform | ansible (see
+# _in_scope). Replaces those paths of main with the reference, commits, and pushes main with a
+# lease on the origin/main commit _backup_repo verified. Only the reference's own files are
+# staged: files the learner's .gitignore ignored never reach the (public) repo.
+_replace_repo() {
+  local dir=$1 ref=$2 id=$3 scope=$4 lease=$5 list
+  local -a gid=()
+  if [[ -z "$(git -C "$dir" config user.email || true)" ]]; then
+    gid=(-c user.name=platform-practice -c user.email=lab@localhost)
   fi
-  if [[ "$scope" == ansible ]]; then
-    git -C "$dir" rm -rfq --ignore-unmatch -- ansible ':(glob).github/workflows/ansible*.yml'
-    if [[ -d "$ref/ansible" ]]; then
-      mkdir -p "$dir/ansible"
-      cp -a "$ref/ansible/." "$dir/ansible/"
-    fi
-    for f in "$ref"/.github/workflows/ansible*.yml; do
-      [[ -f "$f" ]] || continue
-      mkdir -p "$dir/.github/workflows"
-      cp -a "$f" "$dir/.github/workflows/"
-    done
-  else
-    git -C "$dir" rm -rfq --ignore-unmatch -- .
-    cp -a "$ref/." "$dir/"
+  _keep_ignored "$dir"
+  case "$scope" in
+    all) git -C "$dir" rm -rfq --ignore-unmatch -- . ;;
+    ansible) git -C "$dir" rm -rfq --ignore-unmatch -- ansible ':(glob).github/workflows/ansible*.yml' ;;
+    terraform)
+      git -C "$dir" rm -rfq --ignore-unmatch -- . ':(exclude)ansible' ':(exclude,glob).github/workflows/ansible*.yml'
+      ;;
+    *) die 2 "unknown catchup scope $scope" ;;
+  esac
+  list="$(mktemp)"
+  _ref_list "$ref" "$scope" "$list"
+  if [[ -s "$list" ]]; then
+    (cd "$ref" && tar --null -T "$list" -cf -) | tar -C "$dir" -xpf - || die 1 "could not copy the reference into $dir"
+    git -C "$dir" --literal-pathspecs add -f --pathspec-from-file="$list" --pathspec-file-nul
   fi
-  git -C "$dir" add -A
-  if [[ -n "$(git -C "$dir" status --porcelain)" ]]; then
+  rm -f "$list"
+  if ! git -C "$dir" diff --cached --quiet; then
     git -C "$dir" "${gid[@]}" commit -q -m "catchup: $id"
   fi
   git -C "$dir" push -q "--force-with-lease=main:$lease" origin main ||
@@ -170,31 +230,88 @@ cmd_catchup() {
   done
   [[ -n "$id" ]] || die 2 "usage: ./lab.sh catchup [--yes] <id>"
   load_config
+  require_not_paused
   need git
   task_dir "$id" >/dev/null || die 2 "unknown task: $id"
   _catchup "$id" "$yes"
 }
 
-_catchup() {
-  local id=$1 yes=$2 scope=all tid out do_mod=0 rc kind need_live=0 need_mod=0
-  # shellcheck disable=SC2034 # read by _run_hook (dynamic scope)
-  local CATCHUP_YES=$yes
-  local -a ids=() done_ids=()
-  if [[ "$(task_track "$id")" == ansible ]]; then
-    task_dir tf-25 >/dev/null || die 2 "tf-25 not found"
-    rc=0
-    grade_quiet tf-25 || rc=$?
-    case "$rc" in
-      # tf-25's checks pass: as good as ./lab.sh grade tf-25, which every Ansible task requires.
-      0) done_ids+=(tf-25) ;;
-      1)
-        echo "tf-25 checks fail; replaying the Terraform reference first"
-        _catchup tf-25 "$yes"
-        ;;
-      *) die "$rc" "cannot check tf-25 state (az/gh login?) — not replaying terraform" ;;
-    esac
-    scope=ansible
+# _tf_past_25: why the learner's Terraform work is past tf-25, empty when it isn't: a finished
+# tf-26+ task, a stack only tf-29/tf-31 create, or a paused lab (whose checks fail anyway).
+_tf_past_25() {
+  local t s
+  t="$(awk -F'\t' '$1 ~ /^tf-[0-9]+$/ && $3 != "" && substr($1, 4) + 0 > 25 { print $1; exit }' \
+    "$(progress_file)" 2>/dev/null || true)"
+  if [[ -n "$t" ]]; then
+    echo "$t is done"
+    return 0
   fi
+  for s in observability teams; do
+    if [[ -d "$LIVE_DIR/terraform/$s" ]]; then
+      echo "terraform/$s exists in $LIVE_DIR"
+      return 0
+    fi
+  done
+  if [[ -e "$LAB_HOME/paused" ]]; then echo "the lab is paused"; fi
+  return 0
+}
+
+# _print_failed <grade log>: the failing checks of a grade run and their reasons.
+_print_failed() {
+  awk '/FAIL/ { print; f = 1; next } f && /^    / { print; next } { f = 0 }' "$1"
+}
+
+# _tf25_baseline <ansible id>: before an Ansible catchup, check tf-25's state. Its checks pass:
+# tf-25 counts as done (as good as ./lab.sh grade tf-25, which every Ansible task requires).
+# Some fail: replay the Terraform reference up to tf-25, unless the learner's Terraform is past
+# tf-25 — catchup an-XX never rolls back later Terraform work; it stops and prints the failing
+# checks instead. Can't grade (not logged in, checks.sh doesn't load): stop, replay nothing.
+_tf25_baseline() {
+  local id=$1 yes=$2 log rc=0 why
+  task_dir tf-25 >/dev/null || die 2 "tf-25 not found"
+  log="$(mktemp)"
+  grade_capture tf-25 "$log" || rc=$?
+  case "$rc" in
+    0) TF25_DONE=1 ;;
+    1)
+      if ! grep -q 'FAIL' "$log"; then
+        cat "$log" >&2
+        rm -f "$log"
+        die 1 "cannot grade tf-25 (see above) — not replaying terraform"
+      fi
+      why="$(_tf_past_25)"
+      if [[ -n "$why" ]]; then
+        echo "tf-25 checks fail:" >&2
+        _print_failed "$log" >&2
+        rm -f "$log"
+        die 6 "not replaying the tf-25 reference: your Terraform work is past tf-25 ($why), and catchup $id never rolls it back. Fix the failing tf-25 checks above (a paused lab: ./lab.sh resume; a new IP: ./lab.sh init --refresh-ip; a red run on main: fix it), then ./lab.sh catchup $id again"
+      fi
+      rm -f "$log"
+      echo "tf-25 checks fail; replaying the Terraform reference first"
+      _catchup tf-25 "$yes"
+      ;;
+    *)
+      rm -f "$log"
+      die "$rc" "cannot check tf-25 state (az/gh login?) — not replaying terraform"
+      ;;
+  esac
+}
+
+_catchup() {
+  local id=$1 yes=$2 scope tid out do_mod=0 kind need_live=0 need_mod=0 reply
+  local live_lease mod_lease="" backups
+  # shellcheck disable=SC2034 # read by _run_hook (dynamic scope)
+  local CATCHUP_YES=$yes TF25_DONE=0
+  local -a ids=() done_ids=()
+  case "$(task_track "$id")" in
+    terraform) scope=terraform ;;
+    ansible)
+      scope=ansible
+      _tf25_baseline "$id" "$yes"
+      [[ $TF25_DONE -eq 1 ]] && done_ids+=(tf-25)
+      ;;
+    *) scope=all ;;
+  esac
   while IFS= read -r tid; do
     [[ "$scope" == ansible && "$(task_track "$tid")" == terraform ]] && continue
     ids+=("$tid")
@@ -202,9 +319,9 @@ _catchup() {
 
   out="$(mktemp -d)"
   build_reference "$id" "$out"
-  if [[ "$scope" == all && -d "$out/modules" ]]; then do_mod=1; fi
+  if [[ "$scope" != ansible && -d "$out/modules" ]]; then do_mod=1; fi
 
-  if [[ "$scope" == all ]]; then
+  if [[ "$scope" != ansible ]]; then
     _have_repo "$LIVE_DIR" || need_live=1
     if [[ $do_mod -eq 1 ]]; then _have_repo "$MODULES_DIR" || need_mod=1; fi
     for tid in "${ids[@]}"; do
@@ -226,8 +343,30 @@ _catchup() {
     _require_ready "$MODULES_DIR"
   fi
 
-  _replace_repo "$LIVE_DIR" "$out/live" "$id" "$scope" "$yes"
-  if [[ $do_mod -eq 1 ]]; then _replace_repo "$MODULES_DIR" "$out/modules" "$id" all "$yes"; fi
+  # Back up every repo first, then ask once for all of them, then replace: declining replaces
+  # nothing.
+  _backup_repo "$LIVE_DIR"
+  live_lease=$VERIFIED_SHA
+  backups="$BACKUP_BRANCH in $(basename "$LIVE_DIR")"
+  if [[ $do_mod -eq 1 ]]; then
+    _backup_repo "$MODULES_DIR"
+    mod_lease=$VERIFIED_SHA
+    backups+=", $BACKUP_BRANCH in $(basename "$MODULES_DIR")"
+  fi
+  if [[ "$yes" -ne 1 ]]; then
+    if [[ $do_mod -eq 1 ]]; then
+      printf 'Replace main in %s and %s with the reference state of %s? [y/N] ' \
+        "$(basename "$LIVE_DIR")" "$(basename "$MODULES_DIR")" "$id" >&2
+    else
+      printf 'Replace main in %s with the reference state of %s? [y/N] ' "$(basename "$LIVE_DIR")" "$id" >&2
+    fi
+    reply=""
+    read -r reply || true
+    [[ "$reply" == y || "$reply" == Y ]] || die 6 "aborted; nothing replaced (backup: $backups)"
+  fi
+
+  _replace_repo "$LIVE_DIR" "$out/live" "$id" "$scope" "$live_lease"
+  if [[ $do_mod -eq 1 ]]; then _replace_repo "$MODULES_DIR" "$out/modules" "$id" all "$mod_lease"; fi
   rm -rf "$out"
 
   # Every replayed task's hook runs after the push, repo-creating ones too (tf-19 tags its

@@ -557,3 +557,138 @@ finished_ids() { awk -F'\t' '$3 != "" { printf "%s ", $1 }' "$LAB_HOME/progress"
   [ "$status" -eq 1 ]
   [ -z "$(finished_ids 2>/dev/null)" ]
 }
+
+# --- final review fix wave: catchup ------------------------------------------------------------
+
+no_backup() { [ -z "$(git -C "$TEST_TMP/remote-live.git" branch --list 'my-work/*')" ]; }
+
+@test "C1: ansible catchup never replays tf-25 over a finished tf-26+ task; prints the failing checks" {
+  printf 'tf-26\t1\t2\n' >"$LAB_HOME/progress"
+  run "$LAB" catchup --yes an-01
+  echo "$output"
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"FAIL  late present"* ]]
+  [[ "$output" == *"terraform/late.tf is missing"* ]]
+  [[ "$output" == *"tf-26 is done"* ]]
+  [[ "$output" != *"replaying the Terraform reference"* ]]
+  [ -f "$(LIVE)/mine.txt" ]
+  no_backup
+  [ ! -s "$HOOK_LOG" ]
+}
+
+@test "C1: ansible catchup never replays tf-25 when terraform/observability or terraform/teams exists" {
+  for s in observability teams/payments; do
+    mkdir -p "$(LIVE)/terraform/$s"
+    echo 'x' >"$(LIVE)/terraform/$s/main.tf"
+    git -C "$(LIVE)" add -A
+    git -C "$(LIVE)" commit -q -m "$s"
+    git -C "$(LIVE)" push -q origin main
+    run "$LAB" catchup --yes an-01
+    [ "$status" -eq 6 ]
+    [[ "$output" == *"terraform/${s%%/*} exists"* ]]
+    [ -f "$(LIVE)/terraform/$s/main.tf" ]
+    no_backup
+    git -C "$(LIVE)" rm -rqf "terraform/${s%%/*}"
+    git -C "$(LIVE)" commit -q -m "rm $s"
+    git -C "$(LIVE)" push -q origin main
+  done
+}
+
+@test "C1: ansible catchup doesn't replay terraform when tf-25's checks.sh fails to load" {
+  cp -r "$TRACKS_DIR" "$TEST_TMP/tracks"
+  echo 'check_code "broken" (' >"$TEST_TMP/tracks/terraform/03-late/checks.sh"
+  TRACKS_DIR="$TEST_TMP/tracks" run "$LAB" catchup --yes an-01
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not replaying terraform"* ]]
+  [ -f "$(LIVE)/mine.txt" ]
+  no_backup
+}
+
+@test "C2: catchup never commits files the learner's .gitignore ignored (terraform scope)" {
+  printf '.env\nansible/.venv/\nansible/.facts/\n' >"$(LIVE)/.gitignore"
+  git -C "$(LIVE)" add -A
+  git -C "$(LIVE)" commit -q -m ignore
+  git -C "$(LIVE)" push -q origin main
+  echo 'GH_TOKEN=ghp_secret' >"$(LIVE)/.env"
+  mkdir -p "$(LIVE)/ansible/.venv/bin" "$(LIVE)/ansible/.facts"
+  echo py >"$(LIVE)/ansible/.venv/bin/python"
+  echo facts >"$(LIVE)/ansible/.facts/vm-1"
+  run "$LAB" catchup --yes tf-02
+  echo "$output"
+  [ "$status" -eq 0 ]
+  pushed="$(git -C "$TEST_TMP/remote-live.git" ls-tree -r --name-only main)"
+  echo "$pushed"
+  [[ "$pushed" != *".env"* ]]
+  [[ "$pushed" != *".venv"* ]]
+  [[ "$pushed" != *".facts"* ]]
+  [[ "$pushed" == *"terraform/main.tf"* ]]
+  # still on disk, and still ignored though the reference replaced .gitignore
+  [ "$(cat "$(LIVE)/.env")" = "GH_TOKEN=ghp_secret" ]
+  [ -f "$(LIVE)/ansible/.venv/bin/python" ]
+  [ -z "$(git -C "$(LIVE)" status --porcelain)" ]
+}
+
+@test "C2: ansible catchup never commits ansible/.venv the learner's ansible/.gitignore ignored" {
+  mkdir -p "$(LIVE)/terraform" "$(LIVE)/ansible"
+  echo mine >"$(LIVE)/terraform/late.tf"
+  printf '.venv/\n' >"$(LIVE)/ansible/.gitignore"
+  git -C "$(LIVE)" add -A
+  git -C "$(LIVE)" commit -q -m work
+  git -C "$(LIVE)" push -q origin main
+  mkdir -p "$(LIVE)/ansible/.venv/bin"
+  echo py >"$(LIVE)/ansible/.venv/bin/python"
+  run "$LAB" catchup --yes an-02
+  [ "$status" -eq 0 ]
+  pushed="$(git -C "$TEST_TMP/remote-live.git" ls-tree -r --name-only main)"
+  [[ "$pushed" != *".venv"* ]]
+  [[ "$pushed" == *"ansible/roles.yml"* ]]
+  [ -f "$(LIVE)/ansible/.venv/bin/python" ]
+  [ -z "$(git -C "$(LIVE)" status --porcelain)" ]
+}
+
+@test "I1: terraform catchup keeps ansible/ and the Ansible workflows; cap-01 still replaces everything" {
+  mkdir -p "$(LIVE)/ansible" "$(LIVE)/.github/workflows"
+  echo learner >"$(LIVE)/ansible/own.yml"
+  echo learner >"$(LIVE)/.github/workflows/ansible-ci.yml"
+  echo learner >"$(LIVE)/.github/workflows/terraform.yml"
+  git -C "$(LIVE)" add -A
+  git -C "$(LIVE)" commit -q -m work
+  git -C "$(LIVE)" push -q origin main
+  run "$LAB" catchup --yes tf-25
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(LIVE)/ansible/own.yml")" = learner ]
+  [ "$(cat "$(LIVE)/.github/workflows/ansible-ci.yml")" = learner ]
+  [ ! -e "$(LIVE)/.github/workflows/terraform.yml" ]
+  [ ! -e "$(LIVE)/mine.txt" ]
+  [ -f "$(LIVE)/terraform/late.tf" ]
+  git -C "$TEST_TMP/remote-live.git" show main:ansible/own.yml
+  run "$LAB" catchup --yes cap-01
+  [ "$status" -eq 0 ]
+  [ ! -e "$(LIVE)/ansible/own.yml" ]
+  [ "$(cat "$(LIVE)/.github/workflows/ansible-ci.yml")" = "name: ansible-ci" ]
+}
+
+@test "I2: catchup and next refuse while the lab is paused" {
+  : >"$LAB_HOME/paused"
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 7 ]
+  [[ "$output" == *"lab is paused — ./lab.sh resume first"* ]]
+  [ -f "$(LIVE)/mine.txt" ]
+  no_backup
+  run "$LAB" next terraform
+  [ "$status" -eq 7 ]
+  [[ "$output" == *"lab is paused — ./lab.sh resume first"* ]]
+  [ ! -e "$LAB_HOME/progress" ]
+}
+
+@test "M1: catchup asks once for both repos, before replacing either" {
+  run bash -c "printf 'y\nn\n' | '$LAB' catchup tf-25"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [ "$(grep -o '\[y/N\]' <<<"$output" | wc -l)" -eq 1 ]
+  [[ "$output" == *"acme-platform and acme-terraform-modules"* ]]
+  [ "$(cat "$TEST_TMP/acme/acme-terraform-modules/m.tf")" = "module acme" ]
+  run bash -c "echo n | '$LAB' catchup tf-25"
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"nothing replaced"* ]]
+}
