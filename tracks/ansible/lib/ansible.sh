@@ -572,11 +572,45 @@ an_wf_runner_jobs() {
   return 0
 }
 
-# an_wf_fork_guard <job> [file]: the job's if: keeps fork pull requests away from the runner
-# (head.repo.full_name compared with github.repository).
+# an_wf_job_if <job> [file]: the job's own if: expression (not a step's), without ${{ }} and
+# surrounding double quotes. Empty when the job has none.
+an_wf_job_if() {
+  local body ind
+  body="$(an_wf_job "$1" "${2:-$AN_WF}")" || return 1
+  ind="$(awk 'NR > 1 && NF { match($0, /[^ ]/); print substr($0, 1, RSTART - 1); exit }' <<<"$body")"
+  [[ -n "$ind" ]] || return 0
+  sed -n "s/^${ind}if:[[:space:]]*//p" <<<"$body" | head -n1 |
+    sed -E 's/[[:space:]]+$//; s/^"(.*)"$/\1/; s/^\$\{\{[[:space:]]*//; s/[[:space:]]*\}\}$//'
+}
+
+# an_wf_guard_ok <expression>: the expression keeps fork pull requests out. The fork guard is
+# head.repo.full_name == github.repository (either way round), alone or as the PR-only clause
+# (github.event_name != 'pull_request' || <guard>). It must be AND-ed in at every level: never
+# OR-ed with anything (always() || <guard> runs every fork), never negated.
+an_wf_guard_ok() {
+  local e=$1 prev guard pr
+  guard='[[:alnum:]_.]*head\.repo\.full_name[[:space:]]*==[[:space:]]*github\.repository|github\.repository[[:space:]]*==[[:space:]]*[[:alnum:]_.]*head\.repo\.full_name'
+  pr="github\.event_name[[:space:]]*!=[[:space:]]*'pull_request'"
+  e="$(sed -E "s/$guard/@/g" <<<"$e")"
+  # github.repository_owner and the like are not the guard
+  ! grep -qE '@[[:alnum:]_.]' <<<"$e" || return 1
+  e="$(sed -E "s/^[[:space:]]*${pr}[[:space:]]*\|\|[[:space:]]*@[[:space:]]*\$/@/; s/\([[:space:]]*${pr}[[:space:]]*\|\|[[:space:]]*@[[:space:]]*\)/@/g; s/\([[:space:]]*@[[:space:]]*\|\|[[:space:]]*${pr}[[:space:]]*\)/@/g" <<<"$e")"
+  # fold every parenthesised group without the guard (and "( @ )") until nothing changes: what is
+  # left are the guard and the operators on its path to the top
+  prev=""
+  while [[ "$e" != "$prev" ]]; do
+    prev=$e
+    e="$(sed -E 's/\([^()@]*\)/X/g; s/\([[:space:]]*@[[:space:]]*\)/@/g' <<<"$e")"
+  done
+  [[ "$e" == *@* && "$e" != *"||"* ]] && ! grep -qE '![[:space:]]*[(@]' <<<"$e"
+}
+
+# an_wf_fork_guard <job> [file]: the job's own if: keeps fork pull requests away from the runner
+# (an_wf_guard_ok).
 an_wf_fork_guard() {
-  an_wf_job "$1" "${2:-$AN_WF}" | grep -E "^[[:space:]]+if:" |
-    grep -qE "head\.repo\.full_name[[:space:]]*==[[:space:]]*github\.repository|github\.repository[[:space:]]*==[[:space:]]*github\.event\.pull_request\.head\.repo\.full_name"
+  local e
+  e="$(an_wf_job_if "$1" "${2:-$AN_WF}")" || return 1
+  [[ -n "$e" ]] && an_wf_guard_ok "$e"
 }
 
 # an_wf_run_jobs <repo> <run id>: the run's jobs as JSON lines {name, conclusion, labels}.
@@ -600,4 +634,5 @@ export -f an_run an_host_count an_on_all an_recap_clean an_second_run an_collect
   an_first_file an_precommit_config an_collections_match an_count an_probe an_playbooks \
   an_play_applies an_molecule_scenario an_group_ips an_hostvar an_molecule_test an_kv_name \
   an_role_dir an_role_dirs an_module_file an_delegates_to an_coll_dir an_coll_pin \
-  an_wf_jobs an_wf_job an_wf_self_hosted an_wf_runner_jobs an_wf_fork_guard an_wf_run_jobs an_wf_job_succeeded
+  an_wf_jobs an_wf_job an_wf_self_hosted an_wf_runner_jobs an_wf_job_if an_wf_guard_ok an_wf_fork_guard \
+  an_wf_run_jobs an_wf_job_succeeded

@@ -13,6 +13,9 @@ Traps:
 - **The status check name is the job name.** tf-06 makes the check `plan` required. A matrix
   job reports as `plan (landing-zone)`, which never satisfies a required `plan` check. Loop
   over the stacks inside one job instead.
+- **Don't give the jobs a `name:`.** GitHub reports a job under its `name:` when it has one.
+  tf-06's required check and later tasks' checks find the jobs by their ids `plan` and `apply`
+  (later `apply-prod`).
 - **Don't put a job in front of `plan`.** If `plan` `needs:` a job that fails, `plan` is
   *skipped*, and a skipped required check counts as passing. Keep helpers (like
   `.github/scripts/stacks.sh`) as steps inside the job.

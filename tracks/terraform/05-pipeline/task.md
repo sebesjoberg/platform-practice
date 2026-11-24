@@ -41,7 +41,8 @@ once merged. The first stack the pipeline owns is a tiny landing zone.
     long plans to stay below GitHub's 64 KB comment limit.
   - job `apply` (push to `main` and manual runs): `init` and `apply -auto-approve` for every
     selected stack, in order
-  - keep exactly the two jobs `plan` and `apply`, and no client secret anywhere
+  - keep exactly the two jobs `plan` and `apply` (job ids, without a `name:`), and no client
+    secret anywhere
 - [ ] Ship it the way all future changes ship: open a PR with the stack, the workflow and
       `.github/scripts/stacks.sh`, read the plan comment, merge, and watch the `apply` run on
       `main` create `rg-{{PREFIX}}-hub`.

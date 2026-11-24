@@ -24,7 +24,22 @@
       delegate_to: "{{ groups['role_jump'] | first }}"
       run_once: true
       register: acme_runner_pubkey
-      failed_when: false
+      # Only a missing file is fine (no runner yet). Anything else stops the run: role base manages
+      # ops' keys exclusively and would strip the runner's key from every VM.
+      failed_when: >-
+        acme_runner_pubkey is failed
+        and 'file not found' not in (acme_runner_pubkey.msg | default('') | lower)
+    # The jump host unreachable: the slurp result is no failure the line above can see. Every host
+    # checks what it got before base runs.
+    - name: Stop unless the runner's key was read or doesn't exist yet
+      ansible.builtin.assert:
+        that: >-
+          acme_runner_pubkey.content is defined
+          or 'file not found' in (acme_runner_pubkey.msg | default('') | lower)
+        fail_msg: >-
+          Could not read {{ acme_runner_pubkey_file }} on the jump host; role base would remove
+          the CI runner's key from every VM. Fix the jump host, then run again.
+        quiet: true
   roles:
     - role: acme.platform.base
 

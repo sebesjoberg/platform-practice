@@ -101,8 +101,25 @@ checks the key (owner `gh-runner`, `0600`, `ssh-ed25519`) and runs
       delegate_to: "{{ groups['role_jump'] | first }}"
       run_once: true
       register: acme_runner_pubkey
-      failed_when: false
+      failed_when: >-
+        acme_runner_pubkey is failed
+        and 'file not found' not in (acme_runner_pubkey.msg | default('') | lower)
+    - name: Stop unless the runner's key was read or doesn't exist yet
+      ansible.builtin.assert:
+        that: >-
+          acme_runner_pubkey.content is defined
+          or 'file not found' in (acme_runner_pubkey.msg | default('') | lower)
+        fail_msg: >-
+          Could not read {{ acme_runner_pubkey_file }} on the jump host; role base would remove
+          the CI runner's key from every VM. Fix the jump host, then run again.
+        quiet: true
 ```
+
+Only a missing file (no runner yet) may pass. `failed_when: false` would also swallow a jump host
+that times out or a permission error: base then runs with your lab key alone and, being
+exclusive, strips the runner's key from every VM, and CI is locked out until the next good run.
+An unreachable jump host isn't a task failure at all (`failed_when` never sees it), hence the
+assert every host runs before base.
 
 `inventory/group_vars/all.yml`:
 

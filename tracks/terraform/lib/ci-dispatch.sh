@@ -29,24 +29,29 @@ ci_approve_pending() {
   done
 }
 
-# ci_approve_waiting <repo>: approve the pending deployments of every terraform.yml run on main
-# that waits for a review. Catchup's own push to main starts a run whose apply-prod job waits in
-# the concurrency group terraform-apply-prod; left alone, it would hold up the apply-prod job of
-# the run catchup dispatches, which then never finishes. Catchup was confirmed by the learner,
-# who is the reviewer, and every such run applies the tree catchup pushed, so approving is the
-# simplest correct option (cancelling would also work, but leaves red runs on main).
+# ci_approve_waiting <repo> <head sha>: approve the pending deployments of the terraform.yml runs on
+# main for commit <head sha> that wait for a review. Catchup's own push to main starts a run whose
+# apply-prod job waits in the concurrency group terraform-apply-prod; left alone, it would hold up
+# the apply-prod job of the run catchup dispatches, which then never finishes. Catchup was
+# confirmed by the learner, who is the reviewer, and such a run applies the tree catchup pushed
+# (the commit the dispatched run applies), so approving it is the simplest correct option
+# (cancelling would also work, but leaves red runs on main). A waiting run for any other commit
+# (an older merge) is never approved: it would apply an old tree to prod. No sha: nothing.
 ci_approve_waiting() {
   local r
-  for r in $(gh run list -R "$1" --workflow terraform.yml --branch main --status waiting --json databaseId --jq '.[].databaseId'); do
+  [[ "$2" =~ ^[0-9a-f]+$ ]] || return 0
+  for r in $(gh run list -R "$1" --workflow terraform.yml --branch main --status waiting --json databaseId,headSha \
+    --jq ".[] | select(.headSha == \"$2\") | .databaseId"); do
     ci_approve_pending "$1" "$r" || true
   done
 }
 
 # ci_wait_run <repo> <run id>: wait until the run completes (at most 90 minutes), approving
-# pending deployments on the way: its own and those of any other waiting run on main, which could
-# block it through the concurrency group. 0 = success.
+# pending deployments on the way: its own and those of any other waiting run on main for the same
+# commit, which could block it through the concurrency group. 0 = success.
 ci_wait_run() {
-  local repo=$1 id=$2 state deadline=$((SECONDS + 5400))
+  local repo=$1 id=$2 state sha deadline=$((SECONDS + 5400))
+  sha="$(gh run view "$id" -R "$repo" --json headSha --jq .headSha)" || sha=""
   while ((SECONDS < deadline)); do
     state="$(gh run view "$id" -R "$repo" --json status,conclusion --jq '.status + " " + (.conclusion // "")')" || state="unknown"
     case "$state" in
@@ -54,7 +59,7 @@ ci_wait_run() {
       completed*) return 1 ;;
       waiting*) ci_approve_pending "$repo" "$id" || true ;;
     esac
-    ci_approve_waiting "$repo" || true
+    ci_approve_waiting "$repo" "$sha" || true
     sleep "${CI_POLL_SECONDS:-15}"
   done
   echo "run $id did not finish within 90 minutes" >&2
@@ -65,9 +70,11 @@ ci_wait_run() {
 # and wait for that run; up to 3 attempts (fresh role assignments can take minutes). <tag>
 # prefixes the messages.
 ci_dispatch_wait() {
-  local repo=$1 stacks=$2 tag=$3 attempt known id
+  local repo=$1 stacks=$2 tag=$3 attempt known id sha
   for attempt in 1 2 3; do
-    ci_approve_waiting "$repo" || true
+    # the dispatched run applies main's head: approve only that commit's waiting runs
+    sha="$(gh api "repos/$repo/commits/main" --jq .sha)" || sha=""
+    ci_approve_waiting "$repo" "$sha" || true
     known=" $(gh run list -R "$repo" --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq '.[].databaseId' | tr '\n' ' ') "
     gh workflow run terraform.yml -R "$repo" --ref main -f stacks="$stacks"
     id=""
