@@ -517,7 +517,7 @@ y'
   [ "$status" -eq 0 ]
   grep -qx "az group delete -n rg-acme-legacy --yes" "$FAKE_LOG"
   grep -qx "gh repo delete learner/acme-payments-app --yes" "$FAKE_LOG"
-  ! grep -q "repo delete learner/acme-platform" "$FAKE_LOG"
+  ! grep -q "repo delete learner/acme-platform" "$FAKE_LOG" || false
 }
 
 @test "nuke deletes groups bootstrap vended before their team stack exists (tag vended_by)" {

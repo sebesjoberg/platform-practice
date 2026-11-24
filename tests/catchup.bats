@@ -163,7 +163,7 @@ source_libs() {
 @test "creates-repo hook skipped when repo exists" {
   run "$LAB" catchup --yes tf-02
   [ "$status" -eq 0 ]
-  ! grep -q before-replace "$HOOK_LOG"
+  ! grep -q before-replace "$HOOK_LOG" || false
 }
 
 @test "creates-repo hook runs before replace when repo is missing" {
@@ -403,7 +403,7 @@ MT='source "$REPO_ROOT/tracks/terraform/lib/modules-tag.sh"'
   echo "$output"
   [ "$status" -eq 0 ]
   git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v1.0.0
-  ! git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v2.0.0
+  ! git -C "$TEST_TMP/remote-mod.git" rev-parse -q --verify refs/tags/v2.0.0 || false
   printf 'module "spoke" {\n  source = "git::https://github.com/learner/acme-terraform-modules.git//spoke?ref=v1.1.0"\n}\n' \
     >"$(LIVE)/terraform/env-dev/main.tf"
   run bash -c 'cd "$1" && eval "$2" && modules_tag_pinned' _ "$(LIVE)" "$MT"

@@ -312,7 +312,7 @@ an_collection_fixture() {
   # Galaxy gets the rest of requirements.yml, without the git entry ...
   grep -q 'ansible-galaxy collection install -r .*requirements-galaxy.yml -p .*platform-practice/collections' "$SHIM_LOG"
   grep -q '  req: .*ansible.posix' "$SHIM_LOG"
-  ! grep -q 'github.com' "$SHIM_LOG"
+  ! grep -q 'github.com' "$SHIM_LOG" || false
   # ... and the collection comes from the reference tree, first on the collections path.
   grep -q 'ansible-galaxy collection install --no-deps --force -p .*collections-live .*live/ansible/collections_src/ansible_collections/acme/platform' "$SHIM_LOG"
   grep -q 'ansible-lint --offline .*collections=.*collections-live:.*platform-practice/collections' "$SHIM_LOG"

@@ -204,9 +204,9 @@ SH
 }
 
 @test "docs: superseded handover bullets, stale live-verify lines and the old approval note are gone" {
-  ! grep -qE "Certificates Officer|TCP 80" "$REPO_ROOT/tracks/terraform/25-vms-handover/task.md"
-  ! grep -qiE "approve[^.]*apply-prod[^.]*ansible-only|ansible-only[^.]*approve" "$REPO_ROOT/tracks/ansible/README.md"
-  ! grep -qE "ci_run_planned|gh variable get|az resource show --ids|tf-14 limitation" "$REPO_ROOT/docs/superpowers/live-verify.md"
+  ! grep -qE "Certificates Officer|TCP 80" "$REPO_ROOT/tracks/terraform/25-vms-handover/task.md" || false
+  ! grep -qiE "approve[^.]*apply-prod[^.]*ansible-only|ansible-only[^.]*approve" "$REPO_ROOT/tracks/ansible/README.md" || false
+  ! grep -qE "ci_run_planned|gh variable get|az resource show --ids|tf-14 limitation" "$REPO_ROOT/docs/superpowers/live-verify.md" || false
   grep -qx "## Capstone (cap-01)" "$REPO_ROOT/docs/superpowers/live-verify.md"
   [ "$(wc -l <"$REPO_ROOT/README.md")" -lt 120 ]
 }

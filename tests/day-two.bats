@@ -39,7 +39,7 @@ lockinfo() { # lockinfo <id>: the base64 lock info the azurerm backend writes
   run bash "$TT/28-state-lock/catchup.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"locked by other-run"* ]]
-  ! grep -q "lease release\|metadata update" "$FAKE_LOG"
+  ! grep -q "lease release\|metadata update" "$FAKE_LOG" || false
 }
 
 @test "tf-28 catchup does nothing without the incident's snapshot" {
@@ -109,7 +109,7 @@ echo "az $*" >>"$FAKE_LOG"
   run bash "$TT/26-import/catchup.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"rg-acme-legacy doesn't exist; the pipeline creates it"* ]]
-  ! grep -q " import \| state mv " "$FAKE_LOG"
+  ! grep -q " import \| state mv " "$FAKE_LOG" || false
 }
 
 @test "tf-26 catchup does nothing when landing-zone doesn't declare the account" {
@@ -128,7 +128,7 @@ echo "az $*" >>"$FAKE_LOG"
   run bash "$TT/31-self-service/catchup.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"created the team repo learner/acme-payments-app"* ]]
-  ! grep -q "PUT" "$FAKE_LOG"
+  ! grep -q "PUT" "$FAKE_LOG" || false
 }
 
 @test "ci_workflow_wait dispatches another workflow on main and waits for its run" {
