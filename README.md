@@ -68,6 +68,10 @@ destroys the workload stacks. Resume re-runs your pipelines on your own `main` (
 runner and the configuration. It never touches your code. The budget from tf-12 alerts at 80 %
 of 300 kr; `./lab.sh cost` shows where you are.
 
+Pause, resume and nuke work from `main` as it is on GitHub (they fetch it into a temporary
+directory), never from your working tree: a feature branch or a local `main` behind your merged
+PRs doesn't matter. Offline, they warn and use your local files.
+
 ## Catchup
 
 `./lab.sh catchup <id>` skips ahead, or gets you unstuck:

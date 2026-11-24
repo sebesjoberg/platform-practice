@@ -7,11 +7,57 @@
 PAUSE_ORDER=(teams/payments env-prod env-dev shared)
 NUKE_ORDER=(teams/payments observability env-prod env-dev shared landing-zone)
 
-# tf_stack <stack> <verb...>: run init then the verb against one stack dir; dies naming the stack on failure.
+# Pause's destroy invalidates these snapshot baselines: tf-14 and tf-15 recorded each spoke VNet's
+# resourceGuid (env-dev, env-prod), and resume recreates the VNets with new ones. The resource IDs
+# (tf-14.ids, tf-15.ids) derive from names and stay valid; observability (tf-29) and the click-ops
+# group (tf-26) survive a pause.
+PAUSE_STALE_SNAPSHOTS=(tf-14.guids tf-15.guids)
+
+# OPS_TREE: the live repo tree pause, resume and nuke read (ops_tree sets it; LIVE_DIR by default).
+OPS_TREE=""
+OPS_TREE_TMP=""
+
+# ops_tree: pause, resume and nuke act on main as it is on GitHub, never on the learner's working
+# tree, which is often behind merged PRs or on a feature branch with half-written HCL. Fetches
+# origin and exports origin/main into a temp dir (removed on exit): OPS_TREE. The learner's
+# gitignored ansible/.venv and installed collections are linked into it for the playbooks. When
+# that is impossible (no repo, offline, no origin/main yet) it warns and uses LIVE_DIR as it is.
+ops_tree() {
+  local rt sha
+  OPS_TREE="$LIVE_DIR"
+  if [[ ! -d "$LIVE_DIR/.git" ]] || ! git -C "$LIVE_DIR" remote get-url origin >/dev/null 2>&1; then
+    if [[ -d "$LIVE_DIR" ]]; then
+      echo "warning: $LIVE_DIR is not a git repo with an origin remote; using the files there as they are" >&2
+    fi
+    return 0
+  fi
+  if ! git -C "$LIVE_DIR" fetch -q origin </dev/null; then
+    echo "warning: could not fetch origin in $LIVE_DIR (offline?); using your local working tree, which may differ from main on GitHub" >&2
+    return 0
+  fi
+  if ! sha="$(git -C "$LIVE_DIR" rev-parse -q --verify refs/remotes/origin/main)"; then
+    echo "warning: $LIVE_DIR has no origin/main; using your local working tree" >&2
+    return 0
+  fi
+  OPS_TREE_TMP="$(mktemp -d)"
+  trap 'rm -rf "$OPS_TREE_TMP"' EXIT
+  git -C "$LIVE_DIR" archive --format=tar "$sha" </dev/null | tar -x -C "$OPS_TREE_TMP" ||
+    die 1 "could not export origin/main of $LIVE_DIR"
+  for rt in ansible/.venv ansible/collections/ansible_collections; do
+    if [[ -d "$LIVE_DIR/$rt" && -d "$OPS_TREE_TMP/$(dirname "$rt")" && ! -e "$OPS_TREE_TMP/$rt" ]]; then
+      ln -s "$LIVE_DIR/$rt" "$OPS_TREE_TMP/$rt"
+    fi
+  done
+  OPS_TREE="$OPS_TREE_TMP"
+  echo "using main as it is on GitHub (origin/main ${sha:0:7}), not your working tree"
+}
+
+# tf_stack <stack> <verb...>: run init then the verb against one stack dir of OPS_TREE; dies naming
+# the stack on failure.
 tf_stack() {
   local stack=$1 dir
   shift
-  dir="$LIVE_DIR/terraform/$stack"
+  dir="${OPS_TREE:-$LIVE_DIR}/terraform/$stack"
   terraform -chdir="$dir" init -input=false </dev/null || die 1 "terraform init failed for $stack"
   terraform -chdir="$dir" "$@" </dev/null || die 1 "terraform $1 failed for $stack"
 }
@@ -43,10 +89,10 @@ lab_destroy_vars() {
 # full run, which queues behind the shared one.
 resume_import_image() {
   local lib="$TRACKS_DIR/terraform/lib/acr-image.sh"
-  [[ -f "$lib" && -d "$LIVE_DIR/terraform/shared" ]] || return 0
+  [[ -f "$lib" && -d "$OPS_TREE/terraform/shared" ]] || return 0
   # shellcheck source=/dev/null
   source "$lib"
-  acr_hello_needed "$LIVE_DIR" || return 0
+  acr_hello_needed "$OPS_TREE" || return 0
   need az
   echo "resume: applying shared first, to import the app image into the new registry"
   gh workflow run terraform.yml -R "$GH_OWNER/$LIVE_REPO" --ref main -f stacks=shared </dev/null || die 1 "could not dispatch terraform.yml"
@@ -58,7 +104,7 @@ resume_import_image() {
 # lab is paused every destroyed stack plans as "create everything", so pause disables it and
 # resume enables it again. Best effort: a failure only prints a warning.
 drift_workflow() {
-  [[ -f "$LIVE_DIR/.github/workflows/drift.yml" ]] || return 0
+  [[ -f "${OPS_TREE:-$LIVE_DIR}/.github/workflows/drift.yml" ]] || return 0
   need gh
   gh workflow "$1" drift.yml -R "$GH_OWNER/$LIVE_REPO" </dev/null >/dev/null ||
     echo "warning: could not $1 drift.yml in $GH_OWNER/$LIVE_REPO (gh workflow $1 drift.yml)" >&2
@@ -67,11 +113,15 @@ drift_workflow() {
 cmd_pause() {
   load_config
   need terraform
+  ops_tree
   lab_destroy_vars
   drift_workflow disable
-  local stack
+  local stack f
+  for f in "${PAUSE_STALE_SNAPSHOTS[@]}"; do
+    rm -f "$LAB_HOME/snapshots/$f"
+  done
   for stack in "${PAUSE_ORDER[@]}"; do
-    [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
+    [[ -d "$OPS_TREE/terraform/$stack" ]] || continue
     echo "pause: destroying $stack"
     tf_stack "$stack" destroy -auto-approve -input=false
   done
@@ -87,9 +137,12 @@ resume_run_ids() {
 }
 
 # resume_dispatch_ids: the same, space separated with spaces around (taken before resume
-# dispatches, to spot its run afterwards).
+# dispatches, to spot its run afterwards). Fails when gh does: with no known ids, an old run would
+# pass for resume's own.
 resume_dispatch_ids() {
-  printf ' %s ' "$(resume_run_ids | tr '\n' ' ')"
+  local ids
+  ids="$(resume_run_ids)" || return 1
+  printf ' %s ' "$(tr '\n' ' ' <<<"$ids")"
 }
 
 # resume_wait_run <known ids>: find the terraform.yml run dispatched after <known ids> was taken
@@ -138,11 +191,13 @@ resume_wait_run() {
 #      runner-register.sh (runner.yml, the vault objects, site.yml), then from an-16 the
 #      pipeline's apply (ansible.yml, env=dev)
 #   3. before that, site.yml from ansible/.venv on this machine
+# Everything runs from OPS_TREE (main from GitHub): the scripts get it as LIVE_DIR, and the playbook
+# uses the learner's ansible/.venv linked into it.
 resume_ansible() {
-  local an="$LIVE_DIR/ansible" lib="$TRACKS_DIR/ansible/lib" rc=0
+  local an="$OPS_TREE/ansible" lib="$TRACKS_DIR/ansible/lib" rc=0
   [[ -d "$an" ]] || return 0
   echo "resume: restoring the Key Vault objects the playbooks read (keyvault-prereqs.sh, up to ~10 minutes)"
-  bash "$lib/keyvault-prereqs.sh" </dev/null || rc=$?
+  LIVE_DIR="$OPS_TREE" bash "$lib/keyvault-prereqs.sh" </dev/null || rc=$?
   case $rc in
     0) ;;
     3) die 3 "resume: keyvault-prereqs.sh needs az and python3 (see its message); then $lib/keyvault-prereqs.sh and ./lab.sh resume" ;;
@@ -150,34 +205,36 @@ resume_ansible() {
   esac
   if [[ -f "$an/runner.yml" ]]; then
     echo "resume: registering the rebuilt jump host as your runner (runner-register.sh: runner.yml, site.yml)"
-    bash "$lib/runner-register.sh" </dev/null || die 1 "resume: runner-register.sh failed; run $lib/runner-register.sh, then ./lab.sh resume again"
-    if [[ -f "$LIVE_DIR/.github/workflows/ansible.yml" ]]; then
+    LIVE_DIR="$OPS_TREE" bash "$lib/runner-register.sh" </dev/null || die 1 "resume: runner-register.sh failed; run $lib/runner-register.sh, then ./lab.sh resume again"
+    if [[ -f "$OPS_TREE/.github/workflows/ansible.yml" ]]; then
       need gh
       gh workflow run ansible.yml -R "$GH_OWNER/$LIVE_REPO" --ref main -f env=dev </dev/null || die 1 "could not dispatch ansible.yml"
       echo "resume: dispatched ansible.yml (env=dev) on the runner"
     fi
   elif [[ -f "$an/site.yml" ]]; then
     [[ -f "$an/.venv/bin/activate" ]] ||
-      die 1 "resume: no $an/.venv (python3 -m venv ansible/.venv && ansible/.venv/bin/pip install -r ansible/requirements.txt)"
+      die 1 "resume: no $LIVE_DIR/ansible/.venv (python3 -m venv ansible/.venv && ansible/.venv/bin/pip install -r ansible/requirements.txt)"
     echo "resume: configuring the VMs (site.yml from ansible/.venv)"
     (
       cd "$an" || exit 1
       # shellcheck disable=SC1091
       source .venv/bin/activate
       ANSIBLE_CONFIG="$PWD/ansible.cfg" ansible-playbook site.yml </dev/null
-    ) || die 1 "resume: site.yml failed; fix it, then cd $an && source .venv/bin/activate && ansible-playbook site.yml"
+    ) || die 1 "resume: site.yml failed; fix it, then (on an up-to-date main) cd $LIVE_DIR/ansible && source .venv/bin/activate && ansible-playbook site.yml"
   fi
 }
 
 cmd_resume() {
   load_config
+  ops_tree
   local i stack known
-  if [[ -f "$LIVE_DIR/.github/workflows/terraform.yml" ]]; then
+  if [[ -f "$OPS_TREE/.github/workflows/terraform.yml" ]]; then
     need gh
     resume_import_image
-    known="$(resume_dispatch_ids)"
+    known="$(resume_dispatch_ids)" ||
+      die 1 "resume: could not list the terraform.yml runs (gh auth status?); the lab stays paused"
     gh workflow run terraform.yml -R "$GH_OWNER/$LIVE_REPO" --ref main -f stacks=all </dev/null || die 1 "could not dispatch terraform.yml"
-    if [[ -f "$LIVE_DIR/terraform/env-prod/main.tf" ]] && grep -qs 'environment:[[:space:]]*prod' "$LIVE_DIR/.github/workflows/terraform.yml"; then
+    if [[ -f "$OPS_TREE/terraform/env-prod/main.tf" ]] && grep -qs 'environment:[[:space:]]*prod' "$OPS_TREE/.github/workflows/terraform.yml"; then
       echo "resume: approve the run's apply-prod job (Actions tab, Review deployments) to rebuild prod"
     fi
     resume_wait_run "$known" ||
@@ -186,7 +243,7 @@ cmd_resume() {
     need terraform
     for ((i = ${#PAUSE_ORDER[@]} - 1; i >= 0; i--)); do
       stack=${PAUSE_ORDER[i]}
-      [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
+      [[ -d "$OPS_TREE/terraform/$stack" ]] || continue
       echo "resume: applying $stack"
       tf_stack "$stack" apply -auto-approve -input=false
     done
@@ -205,9 +262,27 @@ confirm_typed() {
   [[ "$reply" == "$1" ]] || die 6 "nuke: confirmation did not match; nothing was done"
 }
 
+# nuke_keeps_kv_role: nuke in a separate LAB_HOME (the live selftest's) while the learner's own lab
+# (~/.platform-lab) uses the same subscription: their subscription-scope Key Vault Secrets Officer
+# assignment is the one that lab needs too, so it stays.
+nuke_keeps_kv_role() {
+  local own
+  ! lab_home_is_default || return 1
+  [[ -f "$DEFAULT_LAB_HOME/config.env" ]] || return 1
+  own="$(config_value "$DEFAULT_LAB_HOME/config.env" SUBSCRIPTION_ID)"
+  [[ -n "$own" && "$own" == "${SUBSCRIPTION_ID:-}" ]]
+}
+
 cmd_nuke() {
   load_config
   need az gh terraform
+  local keep_kv=0
+  if nuke_keeps_kv_role; then
+    keep_kv=1
+    echo "nuke keeps your Key Vault Secrets Officer role on subscription $SUBSCRIPTION_ID: your own lab in $DEFAULT_LAB_HOME uses it"
+  else
+    echo "nuke also removes your own Key Vault Secrets Officer role on subscription $SUBSCRIPTION_ID (tf-21), even if you had it before the lab"
+  fi
   confirm_typed "$PREFIX" "Type the prefix ($PREFIX) to confirm:"
   confirm_typed nuke "Type 'nuke' to destroy everything:"
 
@@ -219,9 +294,10 @@ cmd_nuke() {
   # landing-zone requires var.budget_email from tf-12 on, shared and env-dev learner_ip and
   # ssh_public_key from tf-25 (CI sets them from repo secrets and variables). Destroy never sends them
   # anywhere, so any valid value will do.
+  ops_tree
   lab_destroy_vars
   for stack in "${NUKE_ORDER[@]}"; do
-    [[ -d "$LIVE_DIR/terraform/$stack" ]] || continue
+    [[ -d "$OPS_TREE/terraform/$stack" ]] || continue
     echo "nuke: destroying $stack"
     tf_stack "$stack" destroy -auto-approve -input=false
   done
@@ -235,7 +311,7 @@ cmd_nuke() {
   # rg-<prefix>-<team> for each terraform/teams/<team> (vended by code without the tag).
   local team groups g
   groups="$(az group list --tag vended_by=bootstrap --query "[?starts_with(name, 'rg-$PREFIX-')].name" -o tsv </dev/null 2>/dev/null | tr -d '\r')" || groups=""
-  for team in "$LIVE_DIR"/terraform/teams/*/; do
+  for team in "$OPS_TREE"/terraform/teams/*/; do
     [[ -d "$team" ]] && groups+=$'\n'"rg-$PREFIX-$(basename "$team")"
   done
   while IFS= read -r g; do
@@ -253,7 +329,7 @@ cmd_nuke() {
   # not set the reference's description. A service principal login has no signed-in user: skip.
   local me kv_ids=""
   me="$(az ad signed-in-user show --query id -o tsv </dev/null 2>/dev/null | tr -d '\r')" || me=""
-  if [[ -n "$me" ]]; then
+  if [[ -n "$me" && $keep_kv -eq 0 ]]; then
     kv_ids="$(az role assignment list --assignee "$me" --scope "/subscriptions/$SUBSCRIPTION_ID" --role "Key Vault Secrets Officer" \
       --query "[?scope=='/subscriptions/$SUBSCRIPTION_ID'].id" -o tsv </dev/null 2>/dev/null | tr -d '\r')" || kv_ids=""
   fi
@@ -273,7 +349,9 @@ cmd_nuke() {
       gh repo delete "$GH_OWNER/$repo" --yes </dev/null || echo "could not delete $GH_OWNER/$repo" >&2
     fi
   done
-  rm -f "$LAB_HOME/progress" "$LAB_HOME/paused"
+  # Every per-lab file goes (progress, paused, snapshots incl. the an-07 secret value, logs,
+  # starters, runner-register.held): a new lab after nuke starts clean. config.env stays.
+  find "$LAB_HOME" -mindepth 1 -maxdepth 1 ! -name config.env -exec rm -rf {} +
   echo "nuked"
 }
 

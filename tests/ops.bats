@@ -2,6 +2,9 @@ load test_helper
 
 setup() {
   setup_lab
+  # nuke and selftest look at the learner's default lab in ~/.platform-lab: never the real one
+  export HOME="$TEST_TMP/home"
+  mkdir -p "$HOME"
   export WINDOWS_MOUNT_PREFIX="$TEST_TMP/no-windows/"
   LAB="$REPO_ROOT/lab.sh"
   LIVE="$TEST_TMP/acme/acme-platform"
@@ -581,4 +584,198 @@ gh run rerun 41 -R learner/acme-platform" ]
   [ "$status" -eq 1 ]
   [ "$(cat "$LAB_HOME/runner-register.held")" = "41" ]
   [[ "$output" == *"could not re-run ansible.yml run(s) 41"* ]]
+}
+
+# --- final review fix wave: pause / resume / nuke -------------------------------------------------
+
+# nuke_basics: the az answers every nuke needs (no CI identity, the state group deletes).
+nuke_basics() {
+  fake_sub
+  fake_response az "identity show -g rg-acme-tfstate -n id-acme-github-ci --query principalId -o tsv" 3
+  fake_response az "group delete -n rg-acme-tfstate --yes" 0
+}
+
+@test "C3: pause drops the tf-14/tf-15 VNet guid baselines (resume recreates the spoke VNets)" {
+  mkstacks env-dev
+  fake_tf env-dev
+  mkdir -p "$LAB_HOME/snapshots"
+  for f in tf-14.ids tf-14.guids tf-15.ids tf-15.guids tf-29.ids tf-29.guids tf-26.ids; do
+    echo x >"$LAB_HOME/snapshots/$f"
+  done
+  run "$LAB" pause
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB_HOME/snapshots/tf-14.guids" ]
+  [ ! -e "$LAB_HOME/snapshots/tf-15.guids" ]
+  # IDs derive from names (a recreated VNet keeps them); observability and the click-ops group
+  # survive a pause
+  for f in tf-14.ids tf-15.ids tf-29.ids tf-29.guids tf-26.ids; do
+    [ -f "$LAB_HOME/snapshots/$f" ]
+  done
+}
+
+@test "I3: nuke removes every per-lab state file and keeps config.env" {
+  nuke_basics
+  mkdir -p "$LAB_HOME/snapshots" "$LAB_HOME/logs" "$LAB_HOME/starter/tf-25"
+  echo secret >"$LAB_HOME/snapshots/an-07.value"
+  echo 1 >"$LAB_HOME/snapshots/an-12.start"
+  echo log >"$LAB_HOME/logs/cap-01-grade-all.log"
+  echo 41 >"$LAB_HOME/runner-register.held"
+  echo f >"$LAB_HOME/starter/tf-25/main.tf"
+  mark_done tf-01
+  : >"$LAB_HOME/paused"
+  run "$LAB" nuke <<<$'acme\nnuke\nn\nn\nn'
+  [ "$status" -eq 0 ]
+  [ "$(ls -A "$LAB_HOME")" = config.env ]
+}
+
+@test "M5: nuke says up front that it removes your Key Vault Secrets Officer role" {
+  run "$LAB" nuke <<<"wrong"
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"Key Vault Secrets Officer"*"even if you had it before the lab"* ]]
+}
+
+@test "M6: resume stops when it can't list the terraform.yml runs" {
+  mkdir -p "$LIVE/.github/workflows"
+  : >"$LIVE/.github/workflows/terraform.yml"
+  : >"$LAB_HOME/paused"
+  fake_response gh "run list -R learner/acme-platform --workflow terraform.yml --event workflow_dispatch --limit 20 --json databaseId --jq .[].databaseId" 1
+  run "$LAB" resume
+  [ "$status" -eq 1 ]
+  [ -f "$LAB_HOME/paused" ]
+  [[ "$output" == *"could not list the terraform.yml runs"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *"workflow run terraform.yml"* ]]
+}
+
+@test "I5: nuke in a selftest LAB_HOME keeps the Key Vault role the learner's own lab uses" {
+  nuke_basics
+  mkdir -p "$HOME/.platform-lab"
+  printf 'PREFIX="me"\nSUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"\n' >"$HOME/.platform-lab/config.env"
+  fake_response az "ad signed-in-user show --query id -o tsv" 0 "uid-me"
+  run "$LAB" nuke <<<$'acme\nnuke\nn\nn\nn'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"keeps your Key Vault Secrets Officer"* ]]
+  [[ "$(cat "$FAKE_LOG")" != *"Key Vault Secrets Officer"* ]]
+  # another subscription: removed as usual
+  printf 'SUBSCRIPTION_ID="99999999-9999-9999-9999-999999999999"\n' >"$HOME/.platform-lab/config.env"
+  fake_response az "role assignment list --assignee uid-me --scope /subscriptions/00000000-0000-0000-0000-000000000000 --role Key Vault Secrets Officer --query [?scope=='/subscriptions/00000000-0000-0000-0000-000000000000'].id -o tsv" 0 ""
+  : >"$FAKE_LOG"
+  run "$LAB" nuke <<<$'acme\nnuke\nn\nn\nn'
+  [ "$status" -eq 0 ]
+  grep -q "role assignment list --assignee uid-me" "$FAKE_LOG"
+}
+
+# git_live: the live repo as a clone of a bare origin; main has terraform/shared (v1).
+git_live() {
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+  ORIGIN="$TEST_TMP/origin.git"
+  git init -q --bare -b main "$ORIGIN"
+  rm -rf "$LIVE"
+  git init -q -b main "$LIVE"
+  git -C "$LIVE" remote add origin "$ORIGIN"
+  mkdir -p "$LIVE/terraform/shared"
+  echo v1 >"$LIVE/terraform/shared/main.tf"
+  git -C "$LIVE" add -A
+  git -C "$LIVE" commit -q -m v1
+  git -C "$LIVE" push -q origin main
+}
+
+# merged_pr <commit message> <file=content>...: a PR merged on GitHub (pushed from another clone).
+merged_pr() {
+  local other="$TEST_TMP/other-$RANDOM" msg=$1 kv
+  shift
+  git clone -q "$ORIGIN" "$other"
+  for kv in "$@"; do
+    mkdir -p "$(dirname "$other/${kv%%=*}")"
+    echo "${kv#*=}" >"$other/${kv%%=*}"
+  done
+  git -C "$other" add -A
+  git -C "$other" commit -q -m "$msg"
+  git -C "$other" push -q origin main
+}
+
+# tf_logger: a terraform that logs "<stack> <verb> <local|export> <main.tf>", and its dir.
+tf_logger() {
+  mkdir -p "$TEST_TMP/bin"
+  cat >"$TEST_TMP/bin/terraform" <<'SH'
+#!/usr/bin/env bash
+dir=${1#-chdir=}
+where=export
+[[ "$dir" == "$LIVE_DIR"* ]] && where=local
+echo "${dir#*/terraform/} $2 $where $(cat "$dir/main.tf" 2>/dev/null)" >>"$FAKE_LOG"
+echo "$dir" >>"$TEST_TMP/tf-dirs"
+SH
+  chmod +x "$TEST_TMP/bin/terraform"
+  export PATH="$TEST_TMP/bin:$PATH" LIVE_DIR="$LIVE"
+}
+
+@test "I4: pause destroys the stacks of origin/main, not a dirty feature branch behind it" {
+  git_live
+  merged_pr "env-dev" terraform/env-dev/main.tf=dev-v2 terraform/shared/main.tf=v2
+  git -C "$LIVE" checkout -q -b feature
+  echo 'resource "half-written" {' >"$LIVE/terraform/shared/main.tf"
+  mkdir -p "$LIVE/terraform/teams/payments"
+  echo local-only >"$LIVE/terraform/teams/payments/main.tf"
+  tf_logger
+  run "$LAB" pause
+  echo "$output"
+  [ "$status" -eq 0 ]
+  expected="env-dev init export dev-v2
+env-dev destroy export dev-v2
+shared init export v2
+shared destroy export v2"
+  [ "$(cat "$FAKE_LOG")" = "$expected" ]
+  # the learner's tree is untouched, and the export is gone
+  [ "$(git -C "$LIVE" symbolic-ref --short HEAD)" = feature ]
+  [ "$(cat "$LIVE/terraform/shared/main.tf")" = 'resource "half-written" {' ]
+  [ ! -e "$LIVE/terraform/env-dev" ]
+  while read -r d; do [ ! -e "$d" ]; done <"$TEST_TMP/tf-dirs"
+}
+
+@test "I4: offline, pause warns and falls back to the local tree" {
+  git_live
+  git -C "$LIVE" remote set-url origin "$TEST_TMP/gone.git"
+  tf_logger
+  run "$LAB" pause
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"warning: could not fetch origin"*"local working tree"* ]]
+  [ "$(cat "$FAKE_LOG")" = "shared init local v1
+shared destroy local v1" ]
+}
+
+@test "I4: nuke destroys the stacks of origin/main" {
+  git_live
+  merged_pr "obs" terraform/observability/main.tf=obs
+  git -C "$LIVE" checkout -q -b feature
+  nuke_basics
+  tf_logger
+  run "$LAB" nuke <<<$'acme\nnuke\nn\nn\nn'
+  [ "$status" -eq 0 ]
+  grep -qx "observability destroy export obs" "$FAKE_LOG"
+  grep -qx "shared destroy export v1" "$FAKE_LOG"
+}
+
+@test "I4: resume decides from origin/main and runs site.yml from it with the learner's venv" {
+  git_live
+  merged_pr "pipelines" .github/workflows/terraform.yml=wf ansible/site.yml=site ansible/ansible.cfg=cfg
+  stateful_gh
+  stub_ansible_lib
+  mkdir -p "$LIVE/ansible/.venv/bin"
+  echo 'export VENV_ACTIVE=1' >"$LIVE/ansible/.venv/bin/activate"
+  cat >"$TEST_TMP/bin/ansible-playbook" <<'SH'
+#!/usr/bin/env bash
+where=export
+[[ "$PWD" == "$LIVE_DIR"* ]] && where=local
+echo "ansible-playbook $* $where venv=${VENV_ACTIVE:-0} cfg=$(cat "$ANSIBLE_CONFIG")" >>"$FAKE_LOG"
+SH
+  chmod +x "$TEST_TMP/bin/ansible-playbook"
+  export LIVE_DIR="$LIVE"
+  : >"$LAB_HOME/paused"
+  run "$LAB" resume
+  echo "$output"
+  [ "$status" -eq 0 ]
+  grep -qx "gh workflow run terraform.yml -R learner/acme-platform --ref main -f stacks=all" "$FAKE_LOG"
+  [ "$(tail -n 2 "$FAKE_LOG")" = "keyvault-prereqs.sh
+ansible-playbook site.yml export venv=1 cfg=cfg" ]
+  [ ! -e "$LIVE/ansible/site.yml" ]
+  [ ! -e "$LAB_HOME/paused" ]
 }

@@ -1,6 +1,19 @@
 # shellcheck shell=bash
 # Config contract: $LAB_HOME/config.env
 
+# The learner's own lab. A live selftest runs in a LAB_HOME of its own (init --selftest).
+DEFAULT_LAB_HOME="$HOME/.platform-lab"
+
+# lab_home_is_default: LAB_HOME is the learner's own lab (~/.platform-lab).
+lab_home_is_default() {
+  [[ "$(realpath -m "$LAB_HOME")" == "$(realpath -m "$DEFAULT_LAB_HOME")" ]]
+}
+
+# config_value <config.env> <key>: a value from a config file, read without sourcing it.
+config_value() {
+  sed -n "s/^$2=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$1" | tail -n1
+}
+
 load_config() {
   [[ -f "$LAB_HOME/config.env" ]] || die 1 "no config; run ./lab.sh init first"
   set -a
