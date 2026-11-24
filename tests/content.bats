@@ -87,11 +87,11 @@ tracks/capstone/01-rebuild/reference/live/ansible/site.yml"
 @test "M4: no reference site.yml ignores a failed runner-key read" {
   local f
   for f in $SITES; do
-    ! grep -q 'failed_when: false' "$REPO_ROOT/$f"
+    ! grep -qE '^[[:space:]]+failed_when: false' "$REPO_ROOT/$f" || false
     grep -q "'file not found' not in (acme_runner_pubkey.msg | default('') | lower)" "$REPO_ROOT/$f"
     grep -q 'ansible.builtin.assert' "$REPO_ROOT/$f"
   done
-  ! grep -q 'failed_when: false' "$REPO_ROOT/tracks/ansible/15-gh-runner/solution.md"
+  ! grep -qE '^[[:space:]]+failed_when: false' "$REPO_ROOT/tracks/ansible/15-gh-runner/solution.md" || false
   grep -q "'file not found'" "$REPO_ROOT/tracks/ansible/15-gh-runner/solution.md"
 }
 

@@ -218,7 +218,7 @@ fake_azure() {
   fake_azure
   run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam
   [ "$status" -eq 0 ]
-  ! grep -q SELFTEST "$LAB_HOME/config.env"
+  ! grep -q SELFTEST "$LAB_HOME/config.env" || false
   run "$LAB" init --selftest --prefix lab --gh-owner octo --owner-tag sam
   [ "$status" -eq 0 ]
   grep -qx 'SELFTEST="1"' "$LAB_HOME/config.env"

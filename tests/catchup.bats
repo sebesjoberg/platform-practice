@@ -692,3 +692,62 @@ no_backup() { [ -z "$(git -C "$TEST_TMP/remote-live.git" branch --list 'my-work/
   [ "$status" -eq 6 ]
   [[ "$output" == *"nothing replaced"* ]]
 }
+
+# --- final review follow-up (F1-F3) --------------------------------------------------------------
+
+@test "F1: after catchup, new files in a directory that held only ignored files are not ignored" {
+  printf '.env\n.venv/\n.facts/\n.terraform/\n' >"$(LIVE)/.gitignore"
+  git -C "$(LIVE)" add -A
+  git -C "$(LIVE)" commit -q -m ignore
+  git -C "$(LIVE)" push -q origin main
+  mkdir -p "$(LIVE)/ansible/.venv/bin" "$(LIVE)/ansible/.facts" "$(LIVE)/terraform/observability/.terraform"
+  echo py >"$(LIVE)/ansible/.venv/bin/python"
+  echo facts >"$(LIVE)/ansible/.facts/vm-1"
+  echo plugin >"$(LIVE)/terraform/observability/.terraform/p"
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 0 ]
+  echo "--- info/exclude"; cat "$(LIVE)/.git/info/exclude"
+  ! grep -qx '/ansible/' "$(LIVE)/.git/info/exclude" || false
+  ! grep -qx '/terraform/' "$(LIVE)/.git/info/exclude" || false
+  ! grep -qx '/terraform/observability/' "$(LIVE)/.git/info/exclude" || false
+  [ -z "$(git -C "$(LIVE)" status --porcelain)" ]
+  echo site >"$(LIVE)/ansible/site.yml"
+  echo stack >"$(LIVE)/terraform/observability/main.tf"
+  st="$(git -C "$(LIVE)" status --porcelain --untracked-files=all)"
+  echo "$st"
+  [[ "$st" == *"?? ansible/site.yml"* ]]
+  [[ "$st" == *"?? terraform/observability/main.tf"* ]]
+  ! git -C "$(LIVE)" check-ignore -q ansible/site.yml || false
+  ! git -C "$(LIVE)" check-ignore -q terraform/observability/main.tf || false
+  # what was ignored stays ignored
+  git -C "$(LIVE)" check-ignore -q ansible/.venv/bin/python
+  git -C "$(LIVE)" check-ignore -q ansible/.facts/vm-1
+  git -C "$(LIVE)" check-ignore -q terraform/observability/.terraform/p
+  git -C "$(LIVE)" check-ignore -q .env || [ ! -e "$(LIVE)/.env" ]
+}
+
+@test "F2: an ignored file with glob characters stays ignored, escaped in info/exclude" {
+  printf 'notes*.txt\n' >"$(LIVE)/.gitignore"
+  git -C "$(LIVE)" add -A
+  git -C "$(LIVE)" commit -q -m ignore
+  git -C "$(LIVE)" push -q origin main
+  echo n >"$(LIVE)/notes[1].txt"
+  run "$LAB" catchup --yes tf-02
+  [ "$status" -eq 0 ]
+  cat "$(LIVE)/.git/info/exclude"
+  grep -qxF '/notes\[1\].txt' "$(LIVE)/.git/info/exclude"
+  git -C "$(LIVE)" check-ignore -q 'notes[1].txt'
+  [ -z "$(git -C "$(LIVE)" status --porcelain)" ]
+  ! git -C "$TEST_TMP/remote-live.git" ls-tree -r --name-only main | grep -q notes || false
+}
+
+@test "F3: a started, unfinished tf-26+ task also stops catchup an-XX from replaying tf-25" {
+  printf 'tf-27\t1\t\n' >"$LAB_HOME/progress"
+  run "$LAB" catchup --yes an-01
+  echo "$output"
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"tf-27 is started"* ]]
+  [[ "$output" == *"FAIL  late present"* ]]
+  [ -f "$(LIVE)/mine.txt" ]
+  no_backup
+}

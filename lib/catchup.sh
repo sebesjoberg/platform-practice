@@ -136,15 +136,36 @@ _ref_list() {
   return 0
 }
 
+# _ignored_entries <dir> <path>: the paths a rule ignores, NUL-separated: <path> itself (a file, or
+# a directory a rule names, like ansible/.venv/), or, for a directory git only lists because
+# everything in it is ignored (ansible/ holding just .venv and .facts), what is ignored inside it.
+# Never such a directory itself: new files the learner adds there must not be ignored.
+_ignored_entries() {
+  local dir=$1 p=$2 c
+  if [[ "$p" != */ ]] || git -C "$dir" check-ignore -q -- "$p"; then
+    printf '%s\0' "$p"
+    return 0
+  fi
+  while IFS= read -r -d '' c; do
+    c=${c#"$dir/"}
+    if [[ -d "$dir/$c" && ! -L "$dir/$c" ]]; then c+=/; fi
+    _ignored_entries "$dir" "$c"
+  done < <(find "$dir/$p" -mindepth 1 -maxdepth 1 -print0)
+  return 0
+}
+
 # _keep_ignored <dir>: what the learner's .gitignore files ignore right now (a .env, ansible/.venv,
 # fact caches...) stays ignored once catchup has swapped those files for the reference ones: the
-# paths go to .git/info/exclude, anchored. They stay on disk and are never staged.
+# ignored paths go to .git/info/exclude, anchored and glob-escaped. They stay on disk and are
+# never staged.
 _keep_ignored() {
-  local dir=$1 ex p
+  local dir=$1 ex p e
   local -a add=()
-  while IFS= read -r -d '' p; do
-    p="/$(printf '%s' "$p" | sed 's/[][*?\]/\&/g')"
-    add+=("$p")
+  while IFS= read -r -d '' e; do
+    while IFS= read -r -d '' p; do
+      p="/$(printf '%s' "$p" | sed 's/[][*?\]/\\&/g')"
+      add+=("$p")
+    done < <(_ignored_entries "$dir" "$e")
   done < <(git -C "$dir" ls-files -z -o -i --exclude-standard --directory)
   [[ ${#add[@]} -gt 0 ]] || return 0
   ex="$(git -C "$dir" rev-parse --git-path info/exclude)"
@@ -236,14 +257,14 @@ cmd_catchup() {
   _catchup "$id" "$yes"
 }
 
-# _tf_past_25: why the learner's Terraform work is past tf-25, empty when it isn't: a finished
-# tf-26+ task, a stack only tf-29/tf-31 create, or a paused lab (whose checks fail anyway).
+# _tf_past_25: why the learner's Terraform work is past tf-25, empty when it isn't: a started or
+# finished tf-26+ task, a stack only tf-29/tf-31 create, or a paused lab (whose checks fail anyway).
 _tf_past_25() {
   local t s
-  t="$(awk -F'\t' '$1 ~ /^tf-[0-9]+$/ && $3 != "" && substr($1, 4) + 0 > 25 { print $1; exit }' \
+  t="$(awk -F'\t' '$1 ~ /^tf-[0-9]+$/ && $2 != "" && substr($1, 4) + 0 > 25 { print $1; exit }' \
     "$(progress_file)" 2>/dev/null || true)"
   if [[ -n "$t" ]]; then
-    echo "$t is done"
+    if progress_done "$t"; then echo "$t is done"; else echo "$t is started"; fi
     return 0
   fi
   for s in observability teams; do
