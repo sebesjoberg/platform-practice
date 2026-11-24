@@ -104,7 +104,8 @@ _selftest_offline() {
 # _selftest_clean_trees <dir>...: discard uncommitted changes and untracked files in each dir that
 # is a git repo (reset --hard, clean -fd; ignored files stay). setup.sh starters (tf-05, tf-19,
 # tf-21, tf-25, ...) may write files, and catchup rightly refuses a dirty tree. Only the live
-# selftest does this: it runs on throwaway-prefix repos. A learner's catchup keeps refusing.
+# selftest does this, and only in its own LAB_HOME on throwaway-prefix repos
+# (_selftest_require_isolated). A learner's catchup keeps refusing.
 _selftest_clean_trees() {
   local d
   for d in "$@"; do
@@ -114,11 +115,43 @@ _selftest_clean_trees() {
   done
 }
 
+# _selftest_require_isolated: the live selftest resets repos (_selftest_clean_trees), force-replaces
+# them, rewrites progress and ends with nuke. It runs only in a LAB_HOME of its own, made by
+# `LAB_HOME=<dir> ./lab.sh init --selftest` (config.env carries SELFTEST="1"), whose prefix, repos
+# and directories the learner's own lab (~/.platform-lab) doesn't use. Loads the config.
+_selftest_require_isolated() {
+  local own="$DEFAULT_LAB_HOME/config.env" k v
+  if lab_home_is_default; then
+    die 8 "live selftest needs its own LAB_HOME, not $DEFAULT_LAB_HOME: LAB_HOME=~/.platform-lab-selftest ./lab.sh init --selftest --prefix <throwaway prefix>, then run the selftest with that LAB_HOME"
+  fi
+  load_config
+  [[ "${SELFTEST:-}" == 1 ]] ||
+    die 8 "$LAB_HOME/config.env has no SELFTEST=1: make the selftest's lab with LAB_HOME=$LAB_HOME ./lab.sh init --selftest (or add the line SELFTEST=\"1\" if this LAB_HOME only ever runs selftests)"
+  [[ -f "$own" ]] || return 0
+  if [[ "$(config_value "$own" PREFIX)" == "$PREFIX" && "$(config_value "$own" SUBSCRIPTION_ID)" == "$SUBSCRIPTION_ID" ]]; then
+    die 8 "PREFIX $PREFIX is your own lab's ($own) on the same subscription: the selftest would build and nuke the same resources; init the selftest lab with another --prefix"
+  fi
+  for k in LIVE_DIR MODULES_DIR; do
+    v="$(config_value "$own" "$k")"
+    if [[ -n "$v" && "$(realpath -m "$v")" == "$(realpath -m "${!k}")" ]]; then
+      die 8 "$k ${!k} is your own lab's ($own): the selftest resets and replaces it; init the selftest lab with another --live-dir"
+    fi
+  done
+  if [[ "$(config_value "$own" GH_OWNER)" == "$GH_OWNER" ]]; then
+    for k in LIVE_REPO MODULES_REPO; do
+      if [[ "$(config_value "$own" "$k")" == "${!k}" ]]; then
+        die 8 "$k $GH_OWNER/${!k} is your own lab's ($own): init the selftest lab with another --prefix"
+      fi
+    done
+  fi
+  return 0
+}
+
 _selftest_live() {
   local track=$1 from=$2 to=$3 id d rc
   [[ "${SELFTEST_I_HAVE_PERMISSION:-}" == 1 ]] ||
     die 8 "live selftest creates real Azure resources and costs money; set SELFTEST_I_HAVE_PERMISSION=1 to run it"
-  load_config
+  _selftest_require_isolated
   need az gh terraform git timeout
   _selftest_select "$track" "$from" "$to"
   for id in "${SELFTEST_IDS[@]}"; do

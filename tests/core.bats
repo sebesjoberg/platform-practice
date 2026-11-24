@@ -210,3 +210,23 @@ fake_azure() {
   [ "$status" -eq 0 ]
   [[ "$output" == *'`rg-{{PREFIX}}-hub`'* ]]
 }
+
+@test "I5: init --selftest writes the SELFTEST marker (kept on re-init) and refuses the default LAB_HOME" {
+  export HOME="$TEST_TMP/home"
+  mkdir -p "$HOME"
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam
+  [ "$status" -eq 0 ]
+  ! grep -q SELFTEST "$LAB_HOME/config.env"
+  run "$LAB" init --selftest --prefix lab --gh-owner octo --owner-tag sam
+  [ "$status" -eq 0 ]
+  grep -qx 'SELFTEST="1"' "$LAB_HOME/config.env"
+  run "$LAB" init --prefix lab --gh-owner octo --owner-tag sam
+  [ "$status" -eq 0 ]
+  grep -qx 'SELFTEST="1"' "$LAB_HOME/config.env"
+  LAB_HOME="$HOME/.platform-lab" run "$LAB" init --selftest --prefix lab --gh-owner octo --owner-tag sam
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"LAB_HOME"* ]]
+  [ ! -e "$HOME/.platform-lab/config.env" ]
+}

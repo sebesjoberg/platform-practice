@@ -35,6 +35,8 @@ write_config() {
     for key in $keys; do
       printf '%s="%s"\n' "$key" "${!key}"
     done
+    # the live selftest's own lab (init --selftest); never set in the learner's
+    if [[ "${SELFTEST:-}" == 1 ]]; then printf 'SELFTEST="1"\n'; fi
   } >"$LAB_HOME/config.env.tmp"
   mv "$LAB_HOME/config.env.tmp" "$LAB_HOME/config.env"
 }
@@ -63,7 +65,7 @@ ask() {
 
 cmd_init() {
   need az curl jq
-  local prefix="" owner="" tag="" live_dir="" refresh=0
+  local prefix="" owner="" tag="" live_dir="" refresh=0 selftest=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --prefix) prefix=${2:?--prefix needs a value}; shift 2 ;;
@@ -71,9 +73,15 @@ cmd_init() {
       --owner-tag) tag=${2:?--owner-tag needs a value}; shift 2 ;;
       --live-dir) live_dir=${2:?--live-dir needs a value}; shift 2 ;;
       --refresh-ip) refresh=1; shift ;;
+      --selftest) selftest=1; shift ;;
       *) die 2 "init: unknown option $1" ;;
     esac
   done
+  # --selftest: a lab only for ./lab.sh selftest, which resets repos and ends with nuke. Never in
+  # the learner's own LAB_HOME.
+  if [[ $selftest -eq 1 ]] && lab_home_is_default; then
+    die 2 "init --selftest needs a LAB_HOME of its own, not $DEFAULT_LAB_HOME (e.g. LAB_HOME=~/.platform-lab-selftest ./lab.sh init --selftest --prefix lab ...)"
+  fi
 
   if [[ $refresh -eq 1 ]]; then
     load_config
@@ -95,6 +103,8 @@ cmd_init() {
     source "$LAB_HOME/config.env"
     old_prefix=${PREFIX:-}
   fi
+  # shellcheck disable=SC2034 # read in write_config
+  [[ $selftest -eq 1 ]] && SELFTEST=1
   local old_live_dir=${LIVE_DIR:-}
   unset LIVE_REPO MODULES_REPO MODULES_DIR LIVE_DIR
 

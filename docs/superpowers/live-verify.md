@@ -2,6 +2,12 @@
 
 Things the offline gate cannot prove. Check each during the live selftest; fix and tick.
 
+The live selftest runs in a lab of its own, never the learner's: `export LAB_HOME=~/.platform-lab-selftest`,
+then `./lab.sh init --selftest --prefix lab --live-dir ~/selftest/lab-platform` (a throwaway prefix
+agreed with the learner; `config.env` gets `SELFTEST="1"`). `./lab.sh selftest` refuses the default
+`~/.platform-lab`, a LAB_HOME without the marker, and a prefix, repo or directory the learner's own
+lab uses. Every `./lab.sh` command below runs with that LAB_HOME; `~/.platform-lab` stays untouched.
+
 ## Terraform phase 0 (tf-01…tf-06)
 - [ ] OIDC immutable subjects: GET `repos/{o}/{r}/actions/oidc/customization/sub` returns `sub_claim_prefix`; API-built prefix equals it byte-for-byte; PUT `use_immutable_subject` accepted; PR/main/environment tokens match `gh-pr`/`gh-main`/`gh-env-prod`.
 - [ ] tf-02 first apply with shared key disabled: no 403 / KeyBasedAuthenticationNotPermitted; second plan clean.
@@ -83,7 +89,8 @@ Things the offline gate cannot prove. Check each during the live selftest; fix a
 - [ ] tf-25 two-PR flow (fix round 1): PR 1 (machines) plans green with no data source on the jump VM in the env stacks; PR 2 (`data "azurerm_virtual_machine" "jump"`) plans green after PR 1's apply. While paused, a PR's env-stack plan fails on that data source until resume; confirm resume itself is fine (shared applies before the env stacks in the same run).
 - [ ] tf-24/catchup concurrency (fix round 1): catchup's push to main starts a run whose `apply-prod` waits for review in the group `terraform-apply-prod`. `ci_approve_waiting` (`gh run list --branch main --status waiting`) approves it before tf-05's dispatch and on every poll, so the dispatched run's `apply-prod` isn't blocked. Confirm `--status waiting` lists runs that hold a job for environment approval, and whether a newer pending `apply-prod` cancels the older waiting one instead (then the approval is a no-op, also fine).
 - [ ] Container Apps egress (fix round 1): from the delegated `snet-aca`, image pulls from `acr{P}{S}.azurecr.io` (public endpoint) and Entra token requests for the app identity work without any NSG rule or NAT; find out whether the `greeting` Key Vault reference is resolved inside the VNet (to `pe-kv-{P}-dev`, via the zone link of `vnet-{P}-dev`) or by the platform over the vault's public endpoint, and note it in the README's outbound table.
-- [ ] Live selftest (fix round 1, ruling R1): `_selftest_clean_trees` runs `git reset --hard` and `git clean -fd` in `LIVE_DIR`/`MODULES_DIR` right before each catchup, so the files setup.sh starters wrote (tf-05 writes into the live repo) don't make catchup refuse. Only on the selftest's throwaway-prefix repos; the learner-facing catchup still refuses dirty trees.
+- [ ] Live selftest (fix round 1, ruling R1): `_selftest_clean_trees` runs `git reset --hard` and `git clean -fd` in `LIVE_DIR`/`MODULES_DIR` right before each catchup, so the files setup.sh starters wrote (tf-05 writes into the live repo) don't make catchup refuse. Only on the selftest's throwaway-prefix repos (enforced: own LAB_HOME with `SELFTEST="1"`, prefix/repos/dirs distinct from `~/.platform-lab/config.env`); the learner-facing catchup still refuses dirty trees.
+- [ ] Final review fix wave (I5): with the learner's `~/.platform-lab/config.env` on the same subscription, `./lab.sh nuke` in the selftest LAB_HOME says it keeps the Key Vault Secrets Officer role and leaves the subscription-scope assignment in place (`az role assignment list --assignee <me> --scope /subscriptions/<id> --role "Key Vault Secrets Officer"` still lists it); `~/.platform-lab/progress` and `config.env` are unchanged after the whole run.
 - [ ] tf-21/tf-25 starters (fix round 1): `$LAB_HOME/starter/tf-21` (app-env files, the modules repo's `.trivyignore.yaml` and `ci.yml`, `bootstrap/platform-owner.tf`) and `$LAB_HOME/starter/tf-25` (linux-vm files with a README skeleton rendered with GH_OWNER/MODULES_REPO, both `variables-access.tf`) copy cleanly with the printed commands; time a run of tf-21 (target 25) and tf-25 (target 35).
 - [ ] Cost: one working day of phase 3 against the table in `tracks/terraform/README.md` (`./lab.sh cost`).
 

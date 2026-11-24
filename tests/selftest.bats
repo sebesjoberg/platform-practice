@@ -508,3 +508,60 @@ vr_release_fixture() {
   run grep -B1 '_catchup "$id" 1' "$REPO_ROOT/lib/selftest.sh"
   [[ "$output" == *'_selftest_clean_trees "${LIVE_DIR:-}" "${MODULES_DIR:-}"'* ]]
 }
+
+# --- final review fix wave: the live selftest stays away from the learner's lab (I5) ------------
+
+# st_live: a live selftest run with permission, against an isolated HOME.
+st_live() {
+  export HOME="$TEST_TMP/home"
+  mkdir -p "$HOME"
+  export TRACKS_DIR="$REPO_ROOT/tests/fixtures/selftesttracks" SELFTEST_I_HAVE_PERMISSION=1
+}
+
+# learner_lab <prefix> <live dir>: the learner's own ~/.platform-lab/config.env.
+learner_lab() {
+  mkdir -p "$HOME/.platform-lab"
+  printf 'PREFIX="%s"\nSUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"\nGH_OWNER="learner"\nLIVE_REPO="%s-platform"\nMODULES_REPO="%s-terraform-modules"\nLIVE_DIR="%s"\nMODULES_DIR="%s"\n' \
+    "$1" "$1" "$1" "$2" "$(dirname "$2")/$1-terraform-modules" >"$HOME/.platform-lab/config.env"
+}
+
+@test "I5: live selftest refuses the learner's default LAB_HOME" {
+  st_live
+  mkdir -p "$HOME/.platform-lab"
+  { cat "$LAB_HOME/config.env"; echo 'SELFTEST="1"'; } >"$HOME/.platform-lab/config.env"
+  LAB_HOME="$HOME/.platform-lab" run "$LAB" selftest good
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"its own LAB_HOME"* ]]
+  [ ! -s "$FAKE_LOG" ]
+}
+
+@test "I5: live selftest refuses a LAB_HOME without the SELFTEST marker" {
+  st_live
+  run "$LAB" selftest good
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"SELFTEST=1"*"init --selftest"* ]]
+  [ ! -s "$FAKE_LOG" ]
+}
+
+@test "I5: live selftest refuses a prefix, repo or directory the learner's lab uses" {
+  st_live
+  echo 'SELFTEST="1"' >>"$LAB_HOME/config.env"
+  learner_lab acme "$HOME/acme/acme-platform"
+  run "$LAB" selftest good
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"PREFIX acme"* ]]
+  learner_lab me "$TEST_TMP/acme/acme-platform"
+  run "$LAB" selftest good
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"LIVE_DIR"* ]]
+  [ ! -s "$FAKE_LOG" ]
+}
+
+@test "I5: live selftest starts in an isolated selftest LAB_HOME" {
+  st_live
+  echo 'SELFTEST="1"' >>"$LAB_HOME/config.env"
+  learner_lab me "$HOME/acme/me-platform"
+  run "$LAB" selftest good
+  echo "$output"
+  [[ "$output" == *"== st-01: setup"* ]]
+}

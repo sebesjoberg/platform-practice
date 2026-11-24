@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # platform-practice: Terraform + Ansible on Azure practice lab.
 #
-#   ./lab.sh init [--prefix P --gh-owner O --owner-tag T --live-dir D | --refresh-ip]
+#   ./lab.sh init [--prefix P --gh-owner O --owner-tag T --live-dir D --selftest | --refresh-ip]
 #   ./lab.sh next [track]       start the next task
 #   ./lab.sh task|hint|solution [id]
 #   ./lab.sh status

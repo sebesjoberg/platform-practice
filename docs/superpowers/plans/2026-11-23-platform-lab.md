@@ -383,13 +383,14 @@ Each task's `**Verify:**` is that phase gate.
 
 **Acceptance Criteria:**
 - [ ] Not started until the learner explicitly says Claude may use the subscription in this session.
+- [ ] The selftest runs in its own lab: `LAB_HOME=~/.platform-lab-selftest`, made with `./lab.sh init --selftest` (writes `SELFTEST="1"`), with a throwaway prefix, repos and directories distinct from the learner's `~/.platform-lab/config.env`. The live selftest refuses anything else; the learner's `~/.platform-lab` (progress, config.env, repos) is untouched by the whole run.
 - [ ] `SELFTEST_I_HAVE_PERMISSION=1 ./lab.sh selftest` passes for terraform, ansible and capstone.
-- [ ] `./lab.sh cost` after the run is reported to the learner, and `./lab.sh nuke` leaves no `rg-{P}-*` groups (`az group list --query "[?starts_with(name,'rg-$PREFIX-')]"` empty).
+- [ ] `./lab.sh cost` after the run is reported to the learner, and `./lab.sh nuke` (same selftest LAB_HOME) leaves no `rg-{P}-*` groups of the selftest prefix (`az group list --query "[?starts_with(name,'rg-$PREFIX-')]"` empty) and keeps the learner's subscription-scope Key Vault Secrets Officer assignment when their own lab is on the same subscription.
 
-**Verify:** `SELFTEST_I_HAVE_PERMISSION=1 ./lab.sh selftest && ./lab.sh nuke && az group list --query "[?starts_with(name,'rg-$PREFIX-')].name" -o tsv` → selftest table all ✓, then empty group list after nuke
+**Verify:** `export LAB_HOME=~/.platform-lab-selftest && SELFTEST_I_HAVE_PERMISSION=1 ./lab.sh selftest && ./lab.sh nuke && az group list --query "[?starts_with(name,'rg-$PREFIX-')].name" -o tsv` (PREFIX = the selftest lab's) → selftest table all ✓, then empty group list after nuke; `~/.platform-lab` unchanged
 
 **Steps:**
 - [ ] Ask the learner for permission. Wait.
-- [ ] `./lab.sh init` with a throwaway GitHub owner/repo prefix agreed with the learner (e.g. `PREFIX=lab`), so selftest repos don't collide with the learner's own `acme-*` repos.
-- [ ] Run selftest per track, fix graders/reference, re-run, commit `fix(<track>): live selftest corrections`.
-- [ ] `./lab.sh nuke`, then report the cost.
+- [ ] `export LAB_HOME=~/.platform-lab-selftest`, then `./lab.sh init --selftest --prefix lab --live-dir ~/selftest/lab-platform` with a throwaway GitHub owner/repo prefix agreed with the learner, so selftest repos, directories and Azure resources don't collide with the learner's own lab (the selftest checks this against `~/.platform-lab/config.env` and refuses otherwise).
+- [ ] Run selftest per track (same LAB_HOME), fix graders/reference, re-run, commit `fix(<track>): live selftest corrections`.
+- [ ] `./lab.sh nuke` in the selftest LAB_HOME (it keeps the learner's Key Vault Secrets Officer assignment when `~/.platform-lab` is on the same subscription), then report the cost.
