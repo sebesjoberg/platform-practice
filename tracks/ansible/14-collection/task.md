@@ -42,5 +42,3 @@ This task gets 25 minutes: moving five roles and a module, the metadata, and a f
 `ansible/collections`, `ansible-doc acme.platform.acme_app_setting` works, `molecule test` passes
 in `collections_src/ansible_collections/acme/platform/roles/base`, `ansible-playbook site.yml`
 reports `changed=0`, and `./lab.sh grade` passes.
-
-Target: 25 minutes.

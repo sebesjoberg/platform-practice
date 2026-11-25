@@ -33,5 +33,3 @@ code. Your email address must not end up in the public repo.
 
 `az consumption budget list -o table` shows `budget-{{PREFIX}}-monthly` with amount 300, the
 PR plan shows `(sensitive value)` where the address would be, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

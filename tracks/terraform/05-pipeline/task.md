@@ -51,5 +51,3 @@ once merged. The first stack the pipeline owns is a tiny landing zone.
 
 The PR shows a `### Terraform plan` comment, the latest `terraform` run on `main` is green,
 `az group show -n rg-{{PREFIX}}-hub` works, and `./lab.sh grade` passes.
-
-Target: 25 minutes.

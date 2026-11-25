@@ -43,5 +43,3 @@ and a Molecule scenario. The app itself is given.
 On a web VM, `curl -s localhost/health` prints `ok 1.0.0` and `curl -s localhost/` names the
 release, the host and `dev`; `systemctl show -p User acme-hello` isn't root; a run with
 `-e app_version=broken` fails at the health check; and `./lab.sh grade` passes.
-
-Target: 25 minutes.

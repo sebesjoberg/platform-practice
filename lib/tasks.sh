@@ -107,8 +107,6 @@ cmd_next() {
       bash "$d/setup.sh" || die 1 "setup for $id failed"
     fi
     show_md "$d/task.md"
-    echo
-    echo "target: $(task_meta "$id" target_minutes) min"
     progress_start "$id"
     return 0
   done < <(task_ids "$track")
@@ -116,21 +114,14 @@ cmd_next() {
 }
 
 cmd_status() {
-  local track id title state mins started finished
+  local track id title state
   for track in $(list_tracks); do
     echo "== $track"
-    printf '%-10s %-40s %-5s %s\n' id title 'done' minutes
+    printf '%-10s %-40s %s\n' id title 'done'
     while IFS= read -r id; do
       title="$(task_meta "$id" title)"
-      if progress_done "$id"; then
-        state='done'
-        IFS=$'\t' read -r _ started finished <<<"$(progress_row "$id")"
-        mins=$(((finished - started + 59) / 60))
-      else
-        state="-"
-        mins="-"
-      fi
-      printf '%-10s %-40s %-5s %s\n' "$id" "$title" "$state" "$mins"
+      if progress_done "$id"; then state='done'; else state='-'; fi
+      printf '%-10s %-40s %s\n' "$id" "$title" "$state"
     done < <(task_ids "$track")
   done
 }

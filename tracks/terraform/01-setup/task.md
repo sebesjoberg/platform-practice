@@ -26,7 +26,8 @@ A Windows `az` or `terraform` under `/mnt/c/...` on your PATH does not count.
 - [ ] `./lab.sh init` has written `~/.platform-lab/config.env`. It records your prefix
       (`{{PREFIX}}`), the random suffix (`{{SUFFIX}}`), your subscription and the repo names.
 - [ ] A **public** GitHub repo `{{GH_OWNER}}/{{LIVE_REPO}}`, cloned to the `LIVE_DIR` path from
-      `config.env` (default `~/acme/{{LIVE_REPO}}`).
+      `config.env` (default `~/acme/{{LIVE_REPO}}`). `./lab.sh init` offers to create and clone
+      it for you; say yes, or do it yourself with `gh repo create`.
 - [ ] A `.gitignore` at the root of the repo that ignores:
   - every `.terraform/` directory, at any depth
   - every state file and state backup (`*.tfstate`, `*.tfstate.*`)
@@ -40,5 +41,3 @@ A Windows `az` or `terraform` under `/mnt/c/...` on your PATH does not count.
 
 `terraform version` and `az account show` work from WSL and show the right subscription,
 `gh repo view {{GH_OWNER}}/{{LIVE_REPO}}` shows a public repo, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

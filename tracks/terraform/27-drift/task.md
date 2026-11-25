@@ -32,5 +32,3 @@ next time, before a teammate has to.
 
 The newest `drift.yml` run is green, an issue labelled `drift` exists (open or closed), the
 security finding is gone from `nsg-{{PREFIX}}-dev-app`, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

@@ -38,5 +38,3 @@ After `./lab.sh pause` / `resume` the vault is new: `./lab.sh resume` restores y
 new certificate (new thumbprint) and re-runs `site.yml`. If that fails, run
 `tracks/ansible/lib/keyvault-prereqs.sh` from the lab directory, then `ansible-playbook site.yml`
 from `ansible/`.
-
-Target: 20 minutes.

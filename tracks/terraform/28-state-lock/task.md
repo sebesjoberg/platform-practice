@@ -28,5 +28,3 @@ this task matters: first prove that nobody holds the lock for a reason, then rem
 
 The lease on `env-dev.tfstate` is no longer held, a pipeline run that started after the incident
 is green, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

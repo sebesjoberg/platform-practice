@@ -32,5 +32,3 @@ In `terraform/modules/spoke`:
 `./lab.sh grade` passes: every input and output is described, `env` and `address_space` are
 validated, the constraints are `>=` lower bounds, the README lists every input and output, and
 it is on `main` on GitHub.
-
-Target: 20 minutes.

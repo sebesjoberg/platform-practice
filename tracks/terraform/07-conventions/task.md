@@ -40,5 +40,3 @@ In `terraform/landing-zone`:
 `terraform validate` passes, the plan comment on your PR shows `landing-zone: No changes.`,
 a deliberately wrong value (e.g. `terraform plan -var location=westeurope`) fails with your
 error message, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

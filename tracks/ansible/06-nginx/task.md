@@ -34,5 +34,3 @@ From the jump host (`ssh` to it, then `curl -s http://<web private IP>/`) each w
 with its own name and `dev`; `molecule test` passes in `ansible/roles/nginx`; break the template
 on purpose (a missing `;`), run `site.yml` and see the `validate` step refuse it while nginx keeps
 serving the old config; `./lab.sh grade` passes.
-
-Target: 20 minutes.

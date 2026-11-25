@@ -37,5 +37,3 @@ service. Its stack, `shared`, already has a place in the pipeline's `STACK_ORDER
 `az acr repository show-tags -n acr{{PREFIX}}{{SUFFIX}} --repository hello -o tsv` prints `1.0`,
 `az role assignment list --scope $(az acr show -n acr{{PREFIX}}{{SUFFIX}} --query id -o tsv) -o table`
 shows `AcrPull` for the app identity, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

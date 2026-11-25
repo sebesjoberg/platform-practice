@@ -70,5 +70,3 @@ learners' labs under one GitHub owner never collide.
 shows one credential for `{{PREFIX}}-payments-app`'s main branch, the identity holds `Contributor`
 on `rg-{{PREFIX}}-payments` and nothing else, CI can't grant `Contributor` at subscription scope,
 and `./lab.sh grade` passes.
-
-Target: 30 minutes.

@@ -35,5 +35,3 @@ assertions on the result, on your laptop and later in CI (an-16, on GitHub-hoste
 `cd ansible/roles/base && molecule test` passes with the venv active, the VMs still converge
 with `changed=0` on a second `site.yml` run, and `./lab.sh grade` passes (it runs
 `molecule test`, which takes a few minutes).
-
-Target: 25 minutes.

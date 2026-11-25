@@ -35,5 +35,3 @@ without Azure credentials.
 `./lab.sh grade` passes: the tests mock azurerm and only plan, one of them expects a validation
 failure, the plan job runs them before logging in to Azure, and the latest pull request run is
 green.
-
-Target: 20 minutes.

@@ -25,11 +25,13 @@ terraform version      # 1.17 or newer
 az login
 az account list -o table
 az account set --subscription <subscription id>
-./lab.sh init          # asks for prefix, GitHub owner and owner tag
+./lab.sh init          # asks for prefix, GitHub owner, owner tag and repo name; offers to create the repo
 ./lab.sh next          # starts tf-01 and shows the task with your names
 ```
 
 ## Repo
+
+If you let `./lab.sh init` create and clone the repo, skip to the `.gitignore`. Otherwise:
 
 ```bash
 mkdir -p ~/acme && cd ~/acme

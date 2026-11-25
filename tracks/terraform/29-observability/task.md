@@ -40,5 +40,3 @@ exists and the `customerId` didn't change. Like landing-zone, `observability` su
 `./lab.sh grade` passes: the workspace is in `observability.tfstate` and not in
 `landing-zone.tfstate`, its ID and `customerId` are unchanged, the Activity Log still flows into
 it, and no import or removed blocks are left.
-
-Target: 25 minutes.

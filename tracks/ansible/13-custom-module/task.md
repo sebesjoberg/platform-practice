@@ -40,5 +40,3 @@ This task gets 25 minutes: a module with its documentation, and a role change th
 `sudo cat /etc/acme/settings.json` shows both keys;
 `ansible vm-{{PREFIX}}-web-dev-1 -b -m acme_app_setting -a "path=/etc/acme/settings.json key=x value=1" --check --diff`
 reports `CHANGED` with a diff and leaves the file as it was, and `./lab.sh grade` passes.
-
-Target: 25 minutes.

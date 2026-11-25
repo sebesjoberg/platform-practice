@@ -50,5 +50,3 @@ In `terraform/bootstrap`:
 `az identity federated-credential list -g rg-{{PREFIX}}-tfstate --identity-name id-{{PREFIX}}-github-ci -o table`
 shows the three credentials, `az role assignment list --assignee <principal id> --all -o table`
 shows the three roles, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

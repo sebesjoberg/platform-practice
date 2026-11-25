@@ -4,7 +4,7 @@ Terraform built Acme's machines; this track configures them. You already know An
 tasks skip playbook basics and go straight to how a platform team runs it in production: pinned
 toolchains, dynamic inventory, roles with tests and lint gates, secrets from Key Vault, rolling
 updates without downtime, drift detection and CI on a self-hosted runner. Most tasks take 15–20
-minutes, a few bigger ones 25 (each task says its target). `./lab.sh next ansible` starts one, `./lab.sh hint` / `solution` help, and
+minutes, a few bigger ones 25. `./lab.sh next ansible` starts one, `./lab.sh hint` / `solution` help, and
 `./lab.sh grade` checks it.
 
 | Phase | Tasks | You build |

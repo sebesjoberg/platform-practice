@@ -45,5 +45,4 @@ In `terraform/landing-zone`, every resource below defined **once** with `for_eac
 shows both hub peerings `Connected`, the spoke subnets show their NSGs and the `snet-aca`
 delegation, and `./lab.sh grade` passes.
 
-Target: 25 minutes: the subnets need a nested loop over environments and subnets, the
-one new idea of this task.
+The new idea in this task: the subnets need a nested loop over environments and subnets.

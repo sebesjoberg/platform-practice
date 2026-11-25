@@ -50,5 +50,3 @@ and the first approval.
 deployment whose status is `success`, both vaults exist, and `./lab.sh grade` passes.
 
 From now on `./lab.sh resume` also waits for your approval before it rebuilds prod.
-
-Target: 30 minutes.

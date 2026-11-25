@@ -38,5 +38,3 @@ All code lives in `terraform/bootstrap/` in your repo.
 
 `terraform plan` in `terraform/bootstrap` shows no changes, `git status` shows no
 `terraform.tfstate`, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

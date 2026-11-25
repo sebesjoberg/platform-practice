@@ -34,5 +34,3 @@ to run again at any time: a run that changes nothing must say so.
 `ansible all -e ansible_user=ops -b -m ping` works (as `ops`, through the jump host too), a second
 `ansible-playbook site.yml` ends with `changed=0` for all three VMs, and `./lab.sh grade` passes
 (it runs `site.yml` once more and reads the PLAY RECAP).
-
-Target: 25 minutes.

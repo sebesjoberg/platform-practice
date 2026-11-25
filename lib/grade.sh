@@ -122,21 +122,14 @@ cmd_grade() {
   fi
   task_dir "$id" >/dev/null || die 2 "unknown task: $id"
 
-  local row started="" target now mins timing rc=0
-  row="$(progress_row "$id")"
-  [[ -n "$row" ]] && started="$(cut -f2 <<<"$row")"
-  target="$(task_meta "$id" target_minutes)"
+  local rc=0
   grade_task "$id" "$mode" || rc=$?
-  if [[ -n "$started" ]]; then
-    now="$(date +%s)"
-    mins=$(((now - started + 30) / 60))
-  else
-    mins="?"
-  fi
-  timing="took $mins min (target $target)"
-  echo "$GRADE_PASSED/$GRADE_TOTAL passed — $timing"
+  echo "$GRADE_PASSED/$GRADE_TOTAL passed"
   if [[ $rc -eq 0 ]]; then
-    [[ "$mode" == offline ]] || progress_finish "$id"
+    if [[ "$mode" != offline ]]; then
+      progress_finish "$id"
+      echo "$id done. Next: ./lab.sh next"
+    fi
     return 0
   fi
   exit 1

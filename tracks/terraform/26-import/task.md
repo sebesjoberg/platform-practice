@@ -40,5 +40,3 @@ az group show -n rg-{{PREFIX}}-legacy --query tags
 shows `managed_by: terraform`, the newest pipeline run on `main` is green, and `./lab.sh grade`
 passes. The grader also checks that the account was never recreated (its creation time is
 the one `./lab.sh next` recorded) and that `landing-zone.tfstate` holds both resources.
-
-Target: 20 minutes.

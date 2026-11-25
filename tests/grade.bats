@@ -63,18 +63,21 @@ fake_login() {
   if grep -q "^az" "$FAKE_LOG"; then false; fi
 }
 
-@test "all-pass marks finished and prints timing" {
+@test "all-pass marks finished and prints no timing" {
   fake_login
   printf 'g-02\t%s\t\n' "$(($(date +%s) - 180))" >"$LAB_HOME/progress"
   run "$LAB" grade g-02
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2/2 passed — took 3 min (target 10)"* ]]
+  [[ "$output" == *"2/2 passed"* ]]
+  [[ "$output" == *"g-02 done. Next: ./lab.sh next"* ]]
+  [[ "$output" != *"min"* ]] || false
   grep -qP '^g-02\t\d+\t\d+$' "$LAB_HOME/progress"
 }
 
-@test "no recorded start prints took ?" {
+@test "grade without a recorded start still prints the score" {
   run "$LAB" grade g-06
-  [[ "$output" == *"took ? min (target 5)"* ]]
+  [[ "$output" == *" passed"* ]]
+  [[ "$output" != *"took"* ]] || false
 }
 
 @test "unknown id exits 2" {

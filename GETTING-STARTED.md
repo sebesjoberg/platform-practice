@@ -39,22 +39,23 @@ tf-01 is the setup, and it is graded like any other task. In short:
    `gh auth login` (HTTPS, let gh be git's credential helper).
 3. `./lab.sh init`. It asks for:
    - a **prefix** of 2–6 lowercase letters (default `acme`). It names everything: Azure
-     resources (`rg-<prefix>-hub`) and your repos (`<prefix>-platform`). Pick it once.
+     resources (`rg-<prefix>-hub`) and the default repo names. Pick it once.
    - your **GitHub owner**, detected from `gh`.
    - an **owner tag**, your name or alias, put on every Azure resource.
+   - the **platform repo** on GitHub, where all your work goes (default `<prefix>-platform`).
 
-   It writes `~/.platform-lab/config.env`, which every later command reads.
+   It writes `~/.platform-lab/config.env`, which every later command reads. Then it looks the
+   repo up on GitHub: if it's missing it offers to create it (public), and it clones it to
+   `~/acme/<repo>`. Say no and you can create it yourself; that's part of tf-01 either way.
 4. `./lab.sh next` starts tf-01 properly and shows the task with your own names.
-5. Create the public repo `<owner>/<prefix>-platform`, clone it to `~/acme/<prefix>-platform`,
-   and commit and push a `.gitignore` on `main`. If the repo already exists, clone it and keep
-   going.
-6. `./lab.sh grade`. All green marks tf-01 done.
+5. In your clone, commit and push a `.gitignore` on `main`; the task says what it must ignore.
+6. `./lab.sh grade`. All green marks tf-01 done, and `./lab.sh next` starts tf-02.
 
 ## 3. The loop for every task
 
 ```bash
 cd ~/platform-practice
-./lab.sh next        # starts the next task: runs its setup, prints it, starts the clock
+./lab.sh next        # starts the next task: runs its setup and prints it
 #   ...work in ~/acme/<prefix>-platform...
 ./lab.sh grade       # one line per check; red lines say why
 ./lab.sh hint        # docs links and the traps, if you're stuck
@@ -67,7 +68,7 @@ cd ~/platform-practice
   a plan), merge, and the pipeline applies `main`. Grade after the apply has finished.
 - Some tasks start with an "incident": `next` breaks something and prints only what a teammate
   would report. Finding the cause is the task.
-- `./lab.sh status` shows where you are and how long each task took.
+- `./lab.sh status` shows where you are.
 
 ## 4. When you stop: pause
 

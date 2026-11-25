@@ -6,7 +6,7 @@ network, policy, budgets, versioned modules in their own repo, dev and prod work
 you configure those VMs with Ansible the way a platform team runs it: dynamic inventory, tested
 roles, Key Vault secrets, rolling updates, drift detection, CI on a self-hosted runner.
 
-Each task takes 15–20 minutes (a few take longer; each says its target). The grader is literal
+Tasks take about 15–20 minutes each (a few take longer). There is no timer. The grader is literal
 about names, regions, SKUs and tags, like an exam, and every failing check prints one line that
 says why.
 
@@ -27,12 +27,12 @@ Task tf-01 installs and pins the tools, logs you in, and runs `./lab.sh init`.
 
 | Command | Does |
 |---|---|
-| `./lab.sh init` | checks tools and logins, writes `~/.platform-lab/config.env` (prefix, random suffix, repos, your IP) |
-| `./lab.sh next [track]` | starts the next task of the track: runs its setup, prints it, starts the clock |
+| `./lab.sh init` | checks tools and logins, writes `~/.platform-lab/config.env` (prefix, random suffix, repos, your IP), offers to create and clone your platform repo |
+| `./lab.sh next [track]` | starts the next task of the track: runs its setup and prints it |
 | `./lab.sh task` / `hint` / `solution` `[id]` | the task, docs and traps, the reference approach |
 | `./lab.sh grade [id]` | grades the current task; all green marks it done |
 | `./lab.sh grade --all` | re-grades every finished task in every track: the regression check |
-| `./lab.sh status` | progress and minutes per track |
+| `./lab.sh status` | progress per track |
 | `./lab.sh catchup <id>` | puts your repos and Azure in the reference state after task `<id>` |
 | `./lab.sh pause` / `resume` | destroys / rebuilds the expensive stacks |
 | `./lab.sh cost` | month-to-date spend |

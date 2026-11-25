@@ -34,5 +34,3 @@ an-16) can run, then use it on the incident.
 exits `0` afterwards; both web VMs serve again through HAProxy, and `./lab.sh grade` passes. The
 grader also runs your script against a stand-in `ansible-playbook` that reports a clean fleet, a
 changed host and an unreachable one.
-
-Target: 20 minutes.

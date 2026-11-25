@@ -36,5 +36,3 @@ env stacks in one pull request.
 
 `./lab.sh grade` passes: the module, its tests and CI are in the modules repo, which is public
 with tag `v1.0.0`, the env stacks pin it, nothing local is left, and the run on `main` is green.
-
-Target: 25 minutes.

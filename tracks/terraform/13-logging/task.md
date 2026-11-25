@@ -28,5 +28,3 @@ In `terraform/landing-zone`:
 `az monitor diagnostic-settings subscription list -o table` shows your setting with the
 workspace, a query such as `AzureActivity | take 10` returns rows in the workspace (allow
 10–15 minutes for the first events), and `./lab.sh grade` passes.
-
-Target: 15 minutes.

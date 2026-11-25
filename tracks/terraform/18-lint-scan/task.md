@@ -34,5 +34,3 @@ request, and the team fixes it or writes down why it's acceptable.
 `./lab.sh grade` passes: `.tflint.hcl` enables the azurerm ruleset, the plan job runs tflint and
 a failing trivy config scan before logging in to Azure, and the latest pull request run and the latest run on `main` are
 green.
-
-Target: 20 minutes.

@@ -36,5 +36,3 @@ file.
 From `ansible/`, `ansible-inventory --graph` shows `@role_web` and `@env_dev` with both web VMs
 and `@role_jump` with the jump VM, `ansible all -m ping` answers `pong` from all three, and
 `./lab.sh grade` passes.
-
-Target: 20 minutes.

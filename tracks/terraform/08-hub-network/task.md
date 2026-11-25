@@ -36,5 +36,3 @@ In `terraform/landing-zone`, using the conventions from tf-07 (names from `var.p
 
 `az network vnet subnet list -g rg-{{PREFIX}}-hub --vnet-name vnet-{{PREFIX}}-hub -o table`
 shows the three subnets, each with its NSG, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

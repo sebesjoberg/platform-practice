@@ -48,5 +48,3 @@ This task gets 25 minutes: one workflow with five jobs, and a connection profile
 A pull request that changes `ansible/` shows green `lint`, `molecule` and `check` jobs (the
 `check` log shows the diff); after the merge `apply` succeeds on `vm-{{PREFIX}}-jump`;
 `gh workflow run ansible.yml -f task=drift` ends green; and `./lab.sh grade` passes.
-
-Target: 25 minutes.

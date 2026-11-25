@@ -35,5 +35,3 @@ On the jump host, `for i in $(seq 10); do curl -s localhost; done` shows answers
 `vm-{{PREFIX}}-web-dev-1` and `vm-{{PREFIX}}-web-dev-2`,
 `echo "show servers state web" | sudo socat stdio /run/haproxy/admin.sock` lists both, and
 `./lab.sh grade` passes.
-
-Target: 20 minutes.

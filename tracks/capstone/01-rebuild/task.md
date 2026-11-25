@@ -49,5 +49,3 @@ This capstone gets 45 minutes: it touches both repos and both pipelines.
 `gh run list --workflow ansible.yml` shows a green `workflow_run` run that started after the new
 VM, `for i in $(seq 10); do curl -s localhost; done` on the jump host names both web VMs, and
 `./lab.sh grade` passes (it runs `grade --all` too, so give it time).
-
-Target: 45 minutes.

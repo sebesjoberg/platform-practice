@@ -43,5 +43,3 @@ registration.
 `self-hosted` and `acme-jump`; on the jump host
 `sudo -u gh-runner ssh -i ~gh-runner/.ssh/id_ed25519 ops@<web private IP> true` works;
 `molecule test` passes for `gh_runner`; and `./lab.sh grade` passes.
-
-Target: 25 minutes.

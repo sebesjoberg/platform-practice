@@ -48,5 +48,3 @@ happened, `./lab.sh catchup tf-14` rebuilds the reference state and clears the b
 `./lab.sh grade` passes: the three state blobs exist, each environment's state holds its VNet
 (and landing-zone's only the hub), every snapshotted resource still exists, neither spoke VNet
 was recreated, and no import blocks are left.
-
-Target: 25 minutes.

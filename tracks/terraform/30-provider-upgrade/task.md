@@ -57,5 +57,3 @@ you copy: `diff -r ~/.platform-lab/starter/tf-30/live/terraform "$LIVE_DIR/terra
 The newest pipeline run on `main` is green, tag `v3.0.0` exists, Dependabot has its two secrets,
 and `./lab.sh grade` passes. Within a week Dependabot opens its first PR; read its plan comment
 like any other.
-
-Target: 35 minutes.

@@ -27,5 +27,3 @@ In `terraform/landing-zone`:
 
 `az network private-dns link vnet list -g rg-{{PREFIX}}-hub -z privatelink.vaultcore.azure.net -o table`
 lists three links, `registrationEnabled` false, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

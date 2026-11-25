@@ -40,5 +40,3 @@ artifact.
 lists the three VMs; `gh workflow run ansible.yml -f task=compliance` ends green with an artifact
 `compliance-report` you can download (`gh run download`); and `./lab.sh grade` passes (it runs the
 playbook here too).
-
-Target: 20 minutes.

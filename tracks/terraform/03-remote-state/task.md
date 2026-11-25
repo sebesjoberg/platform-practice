@@ -29,5 +29,3 @@ auth only. No account keys, no SAS tokens.
 
 `terraform plan` in `terraform/bootstrap` says "No changes" with the remote backend, the blob
 `bootstrap.tfstate` shows up in the `tfstate` container, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

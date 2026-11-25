@@ -39,5 +39,3 @@ resource groups whose names start with rg-, so it doesn't block it.
 `curl -fsS "$(terraform -chdir=terraform/env-dev output -raw hello_url)"` (after
 `terraform init` there), or the FQDN from `az containerapp show`, answers with the quickstart
 page, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

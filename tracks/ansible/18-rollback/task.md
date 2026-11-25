@@ -33,5 +33,3 @@ healthy, and the deploy reports failure loudly.
 `vm-{{PREFIX}}-web-dev-1` back, `vm-{{PREFIX}}-web-dev-2` is never touched, both VMs answer
 `/health` with `ok 1.1.0`, `echo "show servers state web" | sudo socat stdio /run/haproxy/admin.sock`
 on the jump host shows both servers in the pool, and `./lab.sh grade` passes.
-
-Target: 20 minutes.

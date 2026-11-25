@@ -37,5 +37,3 @@ From `ansible/` with the venv active, `ansible --version` reports core 2.21 with
 `config file = .../ansible/ansible.cfg`, `ansible-galaxy collection list` shows the three pinned
 versions under `ansible/collections`, `git status` stays clean after the installs, and
 `./lab.sh grade` passes.
-
-Target: 15 minutes.

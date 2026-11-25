@@ -37,5 +37,3 @@ Granting it exactly what it needs is part of the job.
 `RequestDisallowedByPolicy`, and `./lab.sh grade` passes. The grader runs the same probe and
 deletes the group if it ever gets created. A new assignment can take a few minutes (rarely up
 to 30) before Azure enforces it.
-
-Target: 20 minutes.

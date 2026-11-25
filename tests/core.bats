@@ -95,12 +95,11 @@ fake_azure() {
   [[ "$(task_dir demo-02)" == */02-second ]]
 }
 
-@test "next starts first task and prints target" {
+@test "next starts first task and prints no target" {
   run "$LAB" next demo
   [ "$status" -eq 0 ]
   [[ "$output" == *"Do the first thing."* ]]
-  [[ "$output" == *"target: 15 min"* ]]
-  [[ "$output" != *"target_minutes"* ]]
+  [[ "$output" != *"target"* ]] || false
   cut -f1 "$LAB_HOME/progress" | grep -qx demo-01
   run "$LAB" task
   [[ "$output" == *"Do the first thing."* ]]
@@ -229,4 +228,75 @@ fake_azure() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"LAB_HOME"* ]]
   [ ! -e "$HOME/.platform-lab/config.env" ]
+}
+
+@test "init --live-repo names the repo and its clone dir" {
+  export HOME="$TEST_TMP/home"
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-repo my-infra </dev/null
+  [ "$status" -eq 0 ]
+  grep -qx 'LIVE_REPO="my-infra"' "$LAB_HOME/config.env"
+  grep -qx "LIVE_DIR=\"$HOME/acme/my-infra\"" "$LAB_HOME/config.env"
+  # re-init with the same prefix keeps the repo name
+  run "$LAB" init --prefix demo </dev/null
+  grep -qx 'LIVE_REPO="my-infra"' "$LAB_HOME/config.env"
+  run "$LAB" init --prefix demo --live-repo 'bad name' </dev/null
+  [ "$status" -eq 2 ]
+}
+
+@test "init without a terminal leaves the repo alone and says how to create it" {
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir "$TEST_TMP/live" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./lab.sh init --create-repo"* ]]
+  if grep -q '^gh repo' "$FAKE_LOG"; then false; fi
+}
+
+@test "init --create-repo creates a missing public repo and clones it" {
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  fake_response gh "repo view octo/demo-platform --json visibility --jq .visibility" 1
+  fake_response gh "repo create octo/demo-platform --public --description Acme platform (platform-practice lab)" 0
+  fake_response gh "repo clone octo/demo-platform $TEST_TMP/live -- -q" 0
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir "$TEST_TMP/live" --create-repo </dev/null
+  [ "$status" -eq 0 ]
+  grep -qx "gh repo create octo/demo-platform --public --description Acme platform (platform-practice lab)" "$FAKE_LOG"
+  grep -qx "gh repo clone octo/demo-platform $TEST_TMP/live -- -q" "$FAKE_LOG"
+  [[ "$output" == *"repo: created https://github.com/octo/demo-platform"* ]]
+  [[ "$output" == *"repo: cloned to $TEST_TMP/live"* ]]
+}
+
+@test "init --create-repo reuses an existing repo and clone, and flags a private repo" {
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  fake_response gh "repo view octo/demo-platform --json visibility --jq .visibility" 0 PRIVATE
+  mkdir -p "$TEST_TMP/live/.git"
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir "$TEST_TMP/live" --create-repo </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"repo: found"* ]]
+  [[ "$output" == *"--visibility public"* ]]
+  [[ "$output" == *"already a clone"* ]]
+  if grep -qE '^gh repo (create|clone)' "$FAKE_LOG"; then false; fi
+}
+
+@test "init --create-repo does not clone into a non-empty directory" {
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  fake_response gh "repo view octo/demo-platform --json visibility --jq .visibility" 0 PUBLIC
+  mkdir -p "$TEST_TMP/live" && touch "$TEST_TMP/live/notes.txt"
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir "$TEST_TMP/live" --create-repo </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not empty"* ]]
+  if grep -q '^gh repo clone' "$FAKE_LOG"; then false; fi
+}
+
+@test "init --no-repo skips the repo step" {
+  rm "$LAB_HOME/config.env"
+  fake_azure
+  run "$LAB" init --prefix demo --gh-owner octo --owner-tag sam --live-dir "$TEST_TMP/live" --no-repo </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"repo:"* ]] || false
+  if grep -q '^gh repo' "$FAKE_LOG"; then false; fi
 }

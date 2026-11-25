@@ -67,5 +67,3 @@ In `{{LIVE_REPO}}`:
 `az keyvault show -n kv-{{PREFIX}}-dev-{{SUFFIX}}` shows RBAC on and 7 retention days,
 `az keyvault secret show --vault-name kv-{{PREFIX}}-dev-{{SUFFIX}} -n greeting --query value`
 prints the greeting, and `./lab.sh grade` passes.
-
-Target: 25 minutes.

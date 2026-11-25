@@ -33,5 +33,3 @@ In `{{LIVE_REPO}}`:
 `./lab.sh grade` passes: the module has `vnet_cidr`, the changelog has its `2.0.0` entry, tag
 `v2.0.0` exists with the rename while `v1.0.0` still has `address_space`, dev pins v2 and prod
 v1, and the run on `main` is green.
-
-Target: 20 minutes.

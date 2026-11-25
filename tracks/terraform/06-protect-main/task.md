@@ -31,5 +31,3 @@ On `{{GH_OWNER}}/{{LIVE_REPO}}`:
 `gh api repos/{{GH_OWNER}}/{{LIVE_REPO}}/rules/branches/main` lists `pull_request`,
 `required_status_checks`, `non_fast_forward` and `deletion`, the repo settings show `prod`
 with you as reviewer, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

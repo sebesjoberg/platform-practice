@@ -37,5 +37,3 @@ prints nothing but `200` while you run `ansible-playbook rolling.yml -e app_vers
 `ansible-playbook rolling.yml`; `curl -s localhost/health` on each web VM prints `ok 1.1.0`, and
 `./lab.sh grade` passes. The grader runs exactly that: a request every 0.2 s through HAProxy during
 both runs, and it counts every answer that isn't a 200.
-
-Target: 20 minutes.

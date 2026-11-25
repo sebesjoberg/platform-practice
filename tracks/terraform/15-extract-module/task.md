@@ -44,5 +44,3 @@ unchanged. As in tf-14, don't run `./lab.sh pause` before grading.
 `./lab.sh grade` passes: the module exists and both stacks call it, the `moved` blocks are
 there, stack discovery skips modules, both env states hold their VNet at `module.spoke`, and no
 spoke resource was destroyed or recreated.
-
-Target: 25 minutes.

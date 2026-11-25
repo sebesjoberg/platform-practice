@@ -38,5 +38,3 @@ a fake host in `env_prod` (an address nothing answers on), `ansible-playbook sit
 --limit env_prod` fails at your assert without a connection attempt, and with
 `-e confirm_prod=true` gets past it (then fails to reach the fake host); `./lab.sh grade` passes
 (it runs exactly that against its own fixture).
-
-Target: 20 minutes.

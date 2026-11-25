@@ -31,5 +31,3 @@ both running on every commit. The same versions run locally, in the hooks and (f
 `ansible-lint` (from `ansible/`, venv active) ends with `Profile 'production' was required, and it
 passed`, `pre-commit run --config ansible/.pre-commit-config.yaml --all-files` passes from the
 repo root, a commit with a deliberately broken task is rejected, and `./lab.sh grade` passes.
-
-Target: 15 minutes.

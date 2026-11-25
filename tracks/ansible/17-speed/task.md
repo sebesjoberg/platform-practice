@@ -35,5 +35,3 @@ changing what it does.
 The second `site.yml` run is noticeably faster than your first measurement (write both numbers
 in the pull request), `ls ansible/<cache dir>` shows a file per VM, `git status` stays clean, and
 `./lab.sh grade` passes.
-
-Target: 15 minutes.

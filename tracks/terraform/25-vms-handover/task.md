@@ -75,8 +75,6 @@ ssh -i $key -o "ProxyCommand=ssh -i $key -W %h:%p azureuser@<jump_public_ip>" \
 
 works, and `./lab.sh grade` passes.
 
-Target: 35 minutes.
-
 ## Handover to the Ansible track
 
 From here the Ansible track takes over (the tracks can now be done in any order). What it

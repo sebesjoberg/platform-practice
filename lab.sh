@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # platform-practice: Terraform + Ansible on Azure practice lab.
 #
-#   ./lab.sh init [--prefix P --gh-owner O --owner-tag T --live-dir D --selftest | --refresh-ip]
+#   ./lab.sh init [--prefix P --gh-owner O --owner-tag T --live-repo R --live-dir D
+#                  --create-repo | --no-repo --selftest | --refresh-ip]
 #   ./lab.sh next [track]       start the next task
 #   ./lab.sh task|hint|solution [id]
 #   ./lab.sh status
@@ -56,7 +57,7 @@ case "$cmd" in
   cost) cmd_cost ;;
   selftest) cmd_selftest "$@" ;;
   *)
-    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
