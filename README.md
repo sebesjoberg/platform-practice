@@ -10,6 +10,8 @@ Each task takes 15–20 minutes (a few take longer; each says its target). The g
 about names, regions, SKUs and tags, like an exam, and every failing check prints one line that
 says why.
 
+**New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md).**
+
 ## Requirements
 
 - **WSL** with Ubuntu 24.04. Everything runs inside it: Linux `az`, `gh`, `terraform`, `jq`,
