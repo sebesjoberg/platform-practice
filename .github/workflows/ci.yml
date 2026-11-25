@@ -15,8 +15,8 @@ jobs:
   lint-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.local
@@ -39,7 +39,7 @@ jobs:
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Last task id of each track
         id: m
         run: |
@@ -62,13 +62,13 @@ jobs:
       matrix:
         id: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.local
           key: dev-tools-${{ runner.os }}-${{ hashFiles('scripts/install-dev-tools.sh') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: .tf-plugin-cache
           key: tf-plugins-${{ runner.os }}-${{ hashFiles('tracks/**/*.tf') }}
@@ -91,8 +91,8 @@ jobs:
       matrix:
         id: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.local

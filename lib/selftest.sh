@@ -41,6 +41,7 @@ _selftest_grade() {
   (
     GRADE_TMP="$(mktemp -d)"
     trap 'rm -rf "$GRADE_TMP"' EXIT
+    # shellcheck disable=SC2030 # scoped to this subshell on purpose: offline grading of a built tree
     export LIVE_DIR="$live" MODULES_DIR="$mods"
     grade_task "$id" offline
   ) >"$log" 2>&1
@@ -164,6 +165,7 @@ _selftest_live() {
     grade_quiet "$id" || rc=$?
     [[ $rc -eq 1 ]] || die 1 "selftest: $id: grade before catchup should fail (status $rc)"
     echo "== $id: fails before (ok), catchup"
+    # shellcheck disable=SC2031 # the config's LIVE_DIR/MODULES_DIR; _selftest_grade's subshell export never applies here
     _selftest_clean_trees "${LIVE_DIR:-}" "${MODULES_DIR:-}"
     _catchup "$id" 1
     GRADE_TMP="$(mktemp -d)"
