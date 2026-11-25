@@ -46,8 +46,9 @@ jobs:
           ids=()
           for t in tracks/*/; do
             [ -d "$t" ] || continue
-            last=$(find "$t" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)
-            [ -n "$last" ] && [ -f "$last/task.md" ] || continue
+            # the last task directory (one with a task.md); tracks also hold lib/ and other helpers
+            last=$(find "$t" -mindepth 2 -maxdepth 2 -name task.md -printf '%h\n' | sort | tail -n 1)
+            [ -n "$last" ] || continue
             id=$(awk 'NR==1 && $0!="---" {exit} NR>1 && $0=="---" {exit} /^id:/ {sub(/^id:[ \t]*/, ""); sub(/\r$/, ""); print; exit}' "$last/task.md")
             [ -n "$id" ] && ids+=("$id")
           done
