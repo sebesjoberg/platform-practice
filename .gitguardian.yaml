@@ -1,0 +1,10 @@
+# GitGuardian / ggshield: known false positives.
+# These are Azure built-in role definition IDs. They are public, identical in every tenant and
+# grant nothing on their own: https://learn.microsoft.com/azure/role-based-access-control/built-in-roles
+version: 2
+secret:
+  ignored_matches:
+    - name: Azure built-in role "Key Vault Secrets Officer" (role definition ID, not a secret)
+      match: b86a8fe4-44ce-4948-aee5-eccb2c155cd7
+    - name: Azure built-in role "Key Vault Secrets User" (role definition ID, not a secret)
+      match: 4633458b-17de-408a-b874-0445c86b69e6
